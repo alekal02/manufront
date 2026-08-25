@@ -68,6 +68,7 @@ function shell(content, { adminMode = false } = {}) {
       <a class="nav-item ${route === 'equipamentos' || route === 'equipamento' ? 'active' : ''}" data-go="equipamentos">Equipamentos</a>
       ${isFiscal() ? `<a class="nav-item ${route === 'cadastro' ? 'active' : ''}" data-go="cadastro">Cadastro</a>` : ''}
       ${isGerente() ? `<a class="nav-item ${route === 'relatorios' ? 'active' : ''}" data-go="relatorios">Relatórios</a>` : ''}
+      ${isGerente() ? `<a class="nav-item ${route === 'whatsapp' ? 'active' : ''}" data-go="whatsapp">WhatsApp</a>` : ''}
       <a class="nav-item ${route === 'perfil' ? 'active' : ''}" data-go="perfil">Meu perfil</a>
     `;
 
@@ -466,40 +467,6 @@ async function viewRelatorios() {
 }
 
 async function viewPerfil() {
-  let waBlock = '';
-  let cfg = null;
-  let status = null;
-  if (isGerente()) {
-    try {
-      cfg = await api('/filial/whatsapp', { token: token() });
-      try {
-        status = await api('/filial/whatsapp/status', { token: token() });
-      } catch {
-        status = { ok: false };
-      }
-      waBlock = `
-      <form id="form-wa" class="form-card" style="padding:1rem;background:var(--surface);border-radius:var(--radius);max-width:520px;margin-top:1.25rem;display:grid;gap:.65rem">
-        <h2 style="margin:0;font-size:1.05rem">WhatsApp da filial</h2>
-        <p style="margin:0;font-size:.85rem;color:var(--text-muted)">Token WuzAPI, grupo e alertas de OS · ${cfg.dashboard_url || ''}</p>
-        <label>Número (opcional)<input name="whatsapp" value="${cfg.whatsapp || ''}" placeholder="5511999999999"></label>
-        <label>Grupo JID<input name="whatsapp_grupo" value="${cfg.whatsapp_grupo || ''}" placeholder="120363...@g.us"></label>
-        <label>Token WuzAPI<input name="wuzapi_token" value="${cfg.wuzapi_token || ''}" autocomplete="off"></label>
-        <label style="display:flex;align-items:center;gap:.5rem">
-          <input type="checkbox" name="whatsapp_alerta" ${cfg.whatsapp_alerta ? 'checked' : ''}> Alertas ao abrir/encerrar OS
-        </label>
-        <p style="margin:0;font-size:.85rem;color:var(--text-muted)">Sessão: ${status?.ok ? 'OK' : 'indisponível / sem sessão'}</p>
-        <div style="display:flex;flex-wrap:wrap;gap:.5rem">
-          <button class="btn btn-primary" type="submit">Salvar WhatsApp</button>
-          <button class="btn btn-small" type="button" id="wa-conectar">Conectar webhook</button>
-          <a class="btn btn-small" href="${cfg.dashboard_url || '#'}" target="_blank" rel="noopener">Dashboard WuzAPI</a>
-        </div>
-        <p id="wa-msg" style="margin:0;font-size:.85rem;color:var(--text-muted)"></p>
-      </form>`;
-    } catch (err) {
-      waBlock = `<p class="alert error" style="margin-top:1rem">${err.message}</p>`;
-    }
-  }
-
   app().innerHTML = shell(`
     <section class="detail-head"><h1>Meu perfil</h1>
       <p class="lede">${user()?.nome} · ${user()?.nivel} · Filial ${user()?.base_codigo}</p>
@@ -510,7 +477,11 @@ async function viewPerfil() {
       <label>Nova senha<input type="password" name="nova_senha" required></label>
       <button class="btn btn-primary" type="submit">Salvar</button>
     </form>
-    ${waBlock}`);
+    ${
+      isGerente()
+        ? `<p style="margin-top:1.25rem"><a href="#/whatsapp" data-go="whatsapp" class="btn btn-small">Configurar WhatsApp da filial →</a></p>`
+        : ''
+    }`);
   bindShell();
   document.getElementById('form-senha').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -526,38 +497,230 @@ async function viewPerfil() {
       alert(err.message);
     }
   });
-  document.getElementById('form-wa')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const body = {
-      whatsapp: fd.get('whatsapp'),
-      whatsapp_grupo: fd.get('whatsapp_grupo'),
-      wuzapi_token: fd.get('wuzapi_token'),
-      whatsapp_alerta: fd.get('whatsapp_alerta') === 'on',
-    };
-    try {
-      await api('/filial/whatsapp', { method: 'PATCH', body, token: token() });
-      toast('WhatsApp salvo');
-      render();
-    } catch (err) {
-      alert(err.message);
+}
+
+async function viewWhatsappWizard() {
+  if (!isGerente()) return setRoute('equipamentos');
+  let cfg = await api('/filial/whatsapp', { token: token() });
+  let st = await api('/filial/whatsapp/status', { token: token() }).catch(() => ({
+    loggedIn: false,
+    passo: 'qr',
+  }));
+  let passo = st.passo || (st.loggedIn ? (cfg.whatsapp_grupo ? 'pronto' : 'grupo') : 'qr');
+  let qrcode = '';
+  let grupos = [];
+  let pollId = null;
+
+  const stopPoll = () => {
+    if (pollId) {
+      clearInterval(pollId);
+      pollId = null;
     }
-  });
-  document.getElementById('wa-conectar')?.addEventListener('click', async () => {
-    const msg = document.getElementById('wa-msg');
-    try {
-      const r = await api('/filial/whatsapp/conectar', {
-        method: 'POST',
-        body: {},
-        token: token(),
-      });
-      if (msg) msg.textContent = `Webhook: ${r.webhook}`;
-      toast('Webhook conectado');
-    } catch (err) {
-      if (msg) msg.textContent = err.message;
-      alert(err.message);
+  };
+
+  const paint = () => {
+    const steps = `
+      <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
+        <span class="badge ${passo === 'qr' ? 'warn' : 'ok'}">1. QR</span>
+        <span class="badge ${passo === 'grupo' ? 'warn' : passo === 'pronto' ? 'ok' : ''}">2. Grupo</span>
+        <span class="badge ${passo === 'pronto' ? 'ok' : ''}">3. Chatbot</span>
+      </div>`;
+
+    let body = '';
+    if (passo === 'qr') {
+      body = `
+        <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:520px;display:grid;gap:.75rem">
+          <h2 style="margin:0">Conectar WhatsApp</h2>
+          <p style="margin:0;color:var(--text-muted);font-size:.9rem">Escaneie o QR com o celular do chip da filial (WhatsApp → Aparelhos conectados).</p>
+          <label>Token WuzAPI da filial
+            <input id="wa-token" value="${cfg.wuzapi_token || ''}" placeholder="cole o token do dashboard WuzAPI" autocomplete="off">
+          </label>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button class="btn btn-primary" type="button" id="wa-start">Gerar / atualizar QR</button>
+            <button class="btn btn-small" type="button" id="wa-save-token">Salvar token</button>
+          </div>
+          <div id="wa-qr-box" style="min-height:220px;display:grid;place-items:center;background:#f8fafc;border-radius:12px;border:1px dashed var(--border)">
+            ${
+              qrcode
+                ? `<img src="${qrcode}" alt="QR WhatsApp" style="max-width:240px;width:100%;height:auto" />`
+                : '<p style="color:var(--text-muted);padding:1rem;text-align:center">Clique em Gerar QR para começar</p>'
+            }
+          </div>
+          <p id="wa-hint" style="margin:0;font-size:.85rem;color:var(--text-muted)">Aguardando leitura do QR…</p>
+        </section>`;
+    } else if (passo === 'grupo') {
+      const opts = grupos
+        .map(
+          (g) =>
+            `<label style="display:flex;gap:.6rem;align-items:flex-start;padding:.55rem .4rem;border-bottom:1px solid var(--border)">
+              <input type="radio" name="grupo" value="${g.jid}" ${g.jid === cfg.whatsapp_grupo ? 'checked' : ''}>
+              <span><strong>${g.nome || g.jid}</strong><br><small style="color:var(--text-muted)">${g.jid}</small></span>
+            </label>`
+        )
+        .join('');
+      body = `
+        <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:560px;display:grid;gap:.75rem">
+          <h2 style="margin:0">Selecionar grupo</h2>
+          <p style="margin:0;color:var(--text-muted);font-size:.9rem">WhatsApp conectado. Escolha o grupo onde o chatbot vai responder.</p>
+          <div id="wa-grupos" style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+            ${opts || '<p style="padding:1rem;color:var(--text-muted)">Nenhum grupo encontrado. Entre no grupo com o chip e atualize.</p>'}
+          </div>
+          <label style="display:flex;align-items:center;gap:.5rem">
+            <input type="checkbox" id="wa-alerta" ${cfg.whatsapp_alerta ? 'checked' : ''}> Alertas ao abrir/encerrar OS neste grupo
+          </label>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button class="btn btn-primary" type="button" id="wa-save-grupo">Salvar grupo e ativar chatbot</button>
+            <button class="btn btn-small" type="button" id="wa-reload-grupos">Atualizar lista</button>
+          </div>
+        </section>`;
+    } else {
+      body = `
+        <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:560px;display:grid;gap:.75rem">
+          <h2 style="margin:0">Chatbot ativo</h2>
+          <p style="margin:0">Grupo: <strong>${cfg.whatsapp_grupo || '—'}</strong></p>
+          <p style="margin:0;color:var(--text-muted);font-size:.9rem">
+            No grupo, envie <strong>código</strong>, <strong>patrimônio</strong> ou <strong>nome</strong> do equipamento.
+            O bot responde com um link para <strong>abrir ou encerrar manutenção</strong> (mesma tela de OS do sistema).
+          </p>
+          <p style="margin:0;font-size:.85rem">Comandos: <code>ajuda</code> · <code>lista</code></p>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button class="btn btn-small" type="button" id="wa-trocar-grupo">Trocar grupo</button>
+            <button class="btn btn-small" type="button" id="wa-reconectar">Reconectar / novo QR</button>
+            <a class="btn btn-small" href="${cfg.dashboard_url || '#'}" target="_blank" rel="noopener">Dashboard WuzAPI</a>
+          </div>
+        </section>`;
     }
-  });
+
+    app().innerHTML = shell(`
+      <section class="detail-head">
+        <h1>WhatsApp da filial</h1>
+        <p class="lede">Filial ${user()?.base_codigo} — fluxo QR → grupo → chatbot</p>
+      </section>
+      ${steps}
+      ${body}`);
+    bindShell();
+
+    document.getElementById('wa-save-token')?.addEventListener('click', async () => {
+      const tok = document.getElementById('wa-token')?.value || '';
+      try {
+        cfg = await api('/filial/whatsapp', {
+          method: 'PATCH',
+          body: { wuzapi_token: tok },
+          token: token(),
+        });
+        toast('Token salvo');
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById('wa-start')?.addEventListener('click', async () => {
+      const tok = document.getElementById('wa-token')?.value || '';
+      try {
+        if (tok && tok !== cfg.wuzapi_token) {
+          cfg = await api('/filial/whatsapp', {
+            method: 'PATCH',
+            body: { wuzapi_token: tok },
+            token: token(),
+          });
+        }
+        const r = await api('/filial/whatsapp/conectar', { method: 'POST', body: {}, token: token() });
+        qrcode = r.qrcode || '';
+        if (r.loggedIn) {
+          stopPoll();
+          passo = 'grupo';
+          await loadGrupos();
+          paint();
+          return;
+        }
+        paint();
+        startPoll();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById('wa-reload-grupos')?.addEventListener('click', async () => {
+      await loadGrupos();
+      paint();
+    });
+
+    document.getElementById('wa-save-grupo')?.addEventListener('click', async () => {
+      const selected = document.querySelector('input[name="grupo"]:checked')?.value;
+      if (!selected) {
+        alert('Selecione um grupo');
+        return;
+      }
+      try {
+        const r = await api('/filial/whatsapp/grupo', {
+          method: 'POST',
+          body: {
+            whatsapp_grupo: selected,
+            whatsapp_alerta: document.getElementById('wa-alerta')?.checked,
+          },
+          token: token(),
+        });
+        cfg.whatsapp_grupo = r.whatsapp_grupo;
+        cfg.whatsapp_alerta = document.getElementById('wa-alerta')?.checked ? 1 : 0;
+        passo = 'pronto';
+        toast('Chatbot ativado');
+        paint();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById('wa-trocar-grupo')?.addEventListener('click', async () => {
+      passo = 'grupo';
+      await loadGrupos();
+      paint();
+    });
+
+    document.getElementById('wa-reconectar')?.addEventListener('click', () => {
+      stopPoll();
+      passo = 'qr';
+      qrcode = '';
+      paint();
+    });
+  };
+
+  const loadGrupos = async () => {
+    const data = await api('/filial/whatsapp/grupos', { token: token() });
+    grupos = data.grupos || [];
+  };
+
+  const startPoll = () => {
+    stopPoll();
+    pollId = setInterval(async () => {
+      try {
+        const r = await api('/filial/whatsapp/qr', { token: token() });
+        if (r.qrcode) qrcode = r.qrcode;
+        if (r.loggedIn) {
+          stopPoll();
+          passo = 'grupo';
+          await loadGrupos();
+          paint();
+          toast('WhatsApp conectado');
+          return;
+        }
+        const box = document.getElementById('wa-qr-box');
+        if (box && qrcode) {
+          box.innerHTML = `<img src="${qrcode}" alt="QR WhatsApp" style="max-width:240px;width:100%;height:auto" />`;
+        }
+      } catch {
+        /* ignore poll errors */
+      }
+    }, 3000);
+  };
+
+  if (passo === 'grupo') {
+    try {
+      await loadGrupos();
+    } catch (err) {
+      if (err.status === 400) passo = 'qr';
+    }
+  }
+  paint();
 }
 
 async function viewAdminUsuarios() {
@@ -827,6 +990,10 @@ export async function render() {
     if (route === 'relatorios') {
       if (!isGerente()) return setRoute('equipamentos');
       return viewRelatorios();
+    }
+    if (route === 'whatsapp') {
+      if (!isGerente()) return setRoute('equipamentos');
+      return viewWhatsappWizard();
     }
     if (route === 'perfil') return viewPerfil();
     return viewEquipamentos();
