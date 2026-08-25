@@ -62,6 +62,7 @@ function shell(content, { adminMode = false } = {}) {
     ? `
       <a class="nav-item ${route === 'admin-usuarios' ? 'active' : ''}" data-go="admin-usuarios">Usuários</a>
       <a class="nav-item ${route === 'admin-filiais' ? 'active' : ''}" data-go="admin-filiais">Filiais</a>
+      <a class="nav-item ${route === 'admin-whatsapp' ? 'active' : ''}" data-go="admin-whatsapp">WhatsApp</a>
       <a class="nav-item ${route === 'admin-historico' ? 'active' : ''}" data-go="admin-historico">Histórico</a>
     `
     : `
@@ -540,7 +541,8 @@ async function viewAdminFiliais() {
       (b) => `<tr>
       <td>${b.codigo}</td><td>${b.nome}</td>
       <td>${b.total_ativos || 0}</td><td>${b.total_usuarios || 0}</td>
-      <td><button class="btn btn-small" data-rename="${b.id}" data-nome="${b.nome}">Renomear</button></td>
+      <td><button class="btn btn-small" data-rename="${b.id}" data-nome="${b.nome}">Renomear</button>
+          <button class="btn btn-small" data-wa="${b.id}">WhatsApp</button></td>
     </tr>`
     )
     .join('');
@@ -569,6 +571,162 @@ async function viewAdminFiliais() {
       }
     });
   });
+  document.querySelectorAll('[data-wa]').forEach((btn) => {
+    btn.addEventListener('click', () => setRoute('admin-whatsapp', btn.dataset.wa));
+  });
+}
+
+async function viewAdminWhatsapp() {
+  const list = await api('/admin/bases', { token: token() });
+  const selectedId = detailId || String(list[0]?.id || '');
+  let cfg = null;
+  let status = null;
+  if (selectedId) {
+    cfg = await api(`/admin/bases/${selectedId}/whatsapp`, { token: token() });
+    try {
+      status = await api(`/admin/whatsapp/status?base_id=${selectedId}`, { token: token() });
+    } catch {
+      status = { ok: false };
+    }
+  }
+  const opts = list
+    .map(
+      (b) =>
+        `<option value="${b.id}" ${String(b.id) === String(selectedId) ? 'selected' : ''}>${b.codigo} — ${b.nome}</option>`
+    )
+    .join('');
+  app().innerHTML = shell(
+    `<section class="detail-head">
+      <h1>WhatsApp da filial</h1>
+      <p class="lede">Token WuzAPI, grupo e alertas de OS · painel em ${cfg?.dashboard_url || 'WuzAPI'}</p>
+    </section>
+    <section class="form-card" style="padding:1rem;background:var(--surface);border-radius:var(--radius);max-width:640px">
+      <label>Filial
+        <select id="wa-base">${opts}</select>
+      </label>
+      ${
+        cfg
+          ? `<form id="form-wa" style="display:grid;gap:.7rem;margin-top:1rem">
+        <label>Número (opcional)<input name="whatsapp" value="${cfg.whatsapp || ''}" placeholder="5511999999999"></label>
+        <label>Grupo JID<input name="whatsapp_grupo" value="${cfg.whatsapp_grupo || ''}" placeholder="120363...@g.us"></label>
+        <label>Token WuzAPI da filial<input name="wuzapi_token" value="${cfg.wuzapi_token || ''}" autocomplete="off"></label>
+        <label style="display:flex;align-items:center;gap:.5rem">
+          <input type="checkbox" name="whatsapp_alerta" ${cfg.whatsapp_alerta ? 'checked' : ''}> Alertas ao abrir/encerrar OS
+        </label>
+        <p style="font-size:.85rem;color:var(--text-muted)">Status sessão: ${status?.ok ? 'OK' : 'indisponível / sem sessão'} · WuzAPI ${cfg.wuzapi_url || ''}</p>
+        <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+          <button class="btn btn-primary" type="submit">Salvar</button>
+          <button class="btn btn-small" type="button" id="wa-conectar">Conectar webhook</button>
+          <a class="btn btn-small" href="${cfg.dashboard_url || '#'}" target="_blank" rel="noopener">Dashboard WuzAPI</a>
+        </div>
+        <p id="wa-msg" style="font-size:.85rem;color:var(--text-muted)"></p>
+      </form>`
+          : '<p>Nenhuma filial.</p>'
+      }
+    </section>`,
+    { adminMode: true }
+  );
+  bindShell();
+  document.getElementById('wa-base')?.addEventListener('change', (e) => {
+    setRoute('admin-whatsapp', e.target.value);
+  });
+  document.getElementById('form-wa')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = {
+      whatsapp: fd.get('whatsapp'),
+      whatsapp_grupo: fd.get('whatsapp_grupo'),
+      wuzapi_token: fd.get('wuzapi_token'),
+      whatsapp_alerta: fd.get('whatsapp_alerta') === 'on',
+    };
+    try {
+      await api(`/admin/bases/${selectedId}/whatsapp`, {
+        method: 'PATCH',
+        body,
+        token: token(),
+      });
+      toast('WhatsApp salvo');
+      render();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  document.getElementById('wa-conectar')?.addEventListener('click', async () => {
+    const msg = document.getElementById('wa-msg');
+    try {
+      const r = await api('/admin/whatsapp/conectar', {
+        method: 'POST',
+        body: { base_id: selectedId },
+        token: token(),
+      });
+      if (msg) msg.textContent = `Webhook: ${r.webhook}`;
+      toast('Webhook conectado');
+    } catch (err) {
+      if (msg) msg.textContent = err.message;
+      alert(err.message);
+    }
+  });
+}
+
+async function viewAcessoRapido() {
+  await ensureMeta();
+  const d = await api(`/acesso-rapido/${detailId}`);
+  const a = d.ativo || d;
+  const manut = d.manutencao_aberta || null;
+  const baseLabel = d.base ? `${d.base.codigo} · ${d.base.nome}` : '';
+  app().innerHTML = `
+    <div class="app-shell" style="max-width:720px;margin:0 auto;padding:1rem">
+      <header style="margin-bottom:1rem">
+        <p class="subtitle" style="margin:0">Acesso rápido WhatsApp</p>
+        <h1 style="margin:.2rem 0">${a.codigo} · ${a.nome}</h1>
+        <p class="lede">${baseLabel} · ${a.em_manutencao ? 'Em manutenção' : 'Operacional'}</p>
+        <p style="font-size:.8rem;color:var(--text-muted)">Expira: ${d.expira_em || '—'}</p>
+      </header>
+      <section class="info-block" style="padding:1rem;margin-bottom:1rem;background:var(--surface);border-radius:var(--radius)">
+        <p>Tipo: ${meta.tipos_equipamento[a.tipo] || a.tipo || '—'} · Local: ${meta.locais[a.local] || a.local || '—'}</p>
+        <p>${a.observacoes || ''}</p>
+      </section>
+      ${
+        a.em_manutencao
+          ? `<form id="form-encerrar" class="form-card" style="padding:1rem;background:var(--surface);border-radius:var(--radius)">
+              <h2>Encerrar OS ${manut?.os_numero || a.ordem_servico || ''}</h2>
+              <label>Data conclusão<input type="date" name="data_conclusao" required value="${new Date().toISOString().slice(0, 10)}"></label>
+              <label>Observações<textarea name="observacoes_encerramento" required></textarea></label>
+              <button class="btn btn-primary" type="submit">Encerrar manutenção</button>
+            </form>`
+          : `<form id="form-abrir" class="form-card" style="padding:1rem;background:var(--surface);border-radius:var(--radius)">
+              <h2>Abrir manutenção</h2>
+              <label>Nº OS<input name="os_numero" required></label>
+              <label>Data<input type="date" name="data_abertura" required value="${new Date().toISOString().slice(0, 10)}"></label>
+              <label>Responsável<input name="responsavel" value="Fiscal WhatsApp"></label>
+              <label>Local<select name="local"><option value="base">Na base</option><option value="terceiros">Em terceiros</option></select></label>
+              <label>Observações<textarea name="observacoes_abertura" required></textarea></label>
+              <button class="btn btn-primary" type="submit">Abrir OS</button>
+            </form>`
+      }
+    </div>`;
+  document.getElementById('form-abrir')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await api(`/acesso-rapido/${detailId}/manutencao/abrir`, { method: 'POST', body });
+      toast('Manutenção aberta');
+      render();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  document.getElementById('form-encerrar')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await api(`/acesso-rapido/${detailId}/manutencao/encerrar`, { method: 'POST', body });
+      toast('Manutenção encerrada');
+      render();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
 }
 
 async function viewAdminHistorico() {
@@ -593,10 +751,12 @@ async function viewAdminHistorico() {
 export async function render() {
   parseHash();
   try {
+    if (route === 'r' && detailId) return viewAcessoRapido();
     if (route === 'admin-login') return viewAdminLogin();
     if (route === 'login' || (!auth && !route.startsWith('admin'))) return viewLogin();
     if (auth?.admin) {
       if (route === 'admin-filiais') return viewAdminFiliais();
+      if (route === 'admin-whatsapp') return viewAdminWhatsapp();
       if (route === 'admin-historico') return viewAdminHistorico();
       return viewAdminUsuarios();
     }
