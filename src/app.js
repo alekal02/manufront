@@ -62,7 +62,6 @@ function shell(content, { adminMode = false } = {}) {
     ? `
       <a class="nav-item ${route === 'admin-usuarios' ? 'active' : ''}" data-go="admin-usuarios">Usuários</a>
       <a class="nav-item ${route === 'admin-filiais' ? 'active' : ''}" data-go="admin-filiais">Filiais</a>
-      <a class="nav-item ${route === 'admin-whatsapp' ? 'active' : ''}" data-go="admin-whatsapp">WhatsApp</a>
       <a class="nav-item ${route === 'admin-historico' ? 'active' : ''}" data-go="admin-historico">Histórico</a>
     `
     : `
@@ -467,6 +466,40 @@ async function viewRelatorios() {
 }
 
 async function viewPerfil() {
+  let waBlock = '';
+  let cfg = null;
+  let status = null;
+  if (isGerente()) {
+    try {
+      cfg = await api('/filial/whatsapp', { token: token() });
+      try {
+        status = await api('/filial/whatsapp/status', { token: token() });
+      } catch {
+        status = { ok: false };
+      }
+      waBlock = `
+      <form id="form-wa" class="form-card" style="padding:1rem;background:var(--surface);border-radius:var(--radius);max-width:520px;margin-top:1.25rem;display:grid;gap:.65rem">
+        <h2 style="margin:0;font-size:1.05rem">WhatsApp da filial</h2>
+        <p style="margin:0;font-size:.85rem;color:var(--text-muted)">Token WuzAPI, grupo e alertas de OS · ${cfg.dashboard_url || ''}</p>
+        <label>Número (opcional)<input name="whatsapp" value="${cfg.whatsapp || ''}" placeholder="5511999999999"></label>
+        <label>Grupo JID<input name="whatsapp_grupo" value="${cfg.whatsapp_grupo || ''}" placeholder="120363...@g.us"></label>
+        <label>Token WuzAPI<input name="wuzapi_token" value="${cfg.wuzapi_token || ''}" autocomplete="off"></label>
+        <label style="display:flex;align-items:center;gap:.5rem">
+          <input type="checkbox" name="whatsapp_alerta" ${cfg.whatsapp_alerta ? 'checked' : ''}> Alertas ao abrir/encerrar OS
+        </label>
+        <p style="margin:0;font-size:.85rem;color:var(--text-muted)">Sessão: ${status?.ok ? 'OK' : 'indisponível / sem sessão'}</p>
+        <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+          <button class="btn btn-primary" type="submit">Salvar WhatsApp</button>
+          <button class="btn btn-small" type="button" id="wa-conectar">Conectar webhook</button>
+          <a class="btn btn-small" href="${cfg.dashboard_url || '#'}" target="_blank" rel="noopener">Dashboard WuzAPI</a>
+        </div>
+        <p id="wa-msg" style="margin:0;font-size:.85rem;color:var(--text-muted)"></p>
+      </form>`;
+    } catch (err) {
+      waBlock = `<p class="alert error" style="margin-top:1rem">${err.message}</p>`;
+    }
+  }
+
   app().innerHTML = shell(`
     <section class="detail-head"><h1>Meu perfil</h1>
       <p class="lede">${user()?.nome} · ${user()?.nivel} · Filial ${user()?.base_codigo}</p>
@@ -476,7 +509,8 @@ async function viewPerfil() {
       <label>Senha atual<input type="password" name="senha_atual" required></label>
       <label>Nova senha<input type="password" name="nova_senha" required></label>
       <button class="btn btn-primary" type="submit">Salvar</button>
-    </form>`);
+    </form>
+    ${waBlock}`);
   bindShell();
   document.getElementById('form-senha').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -489,6 +523,38 @@ async function viewPerfil() {
       });
       toast('Senha alterada');
     } catch (err) {
+      alert(err.message);
+    }
+  });
+  document.getElementById('form-wa')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = {
+      whatsapp: fd.get('whatsapp'),
+      whatsapp_grupo: fd.get('whatsapp_grupo'),
+      wuzapi_token: fd.get('wuzapi_token'),
+      whatsapp_alerta: fd.get('whatsapp_alerta') === 'on',
+    };
+    try {
+      await api('/filial/whatsapp', { method: 'PATCH', body, token: token() });
+      toast('WhatsApp salvo');
+      render();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  document.getElementById('wa-conectar')?.addEventListener('click', async () => {
+    const msg = document.getElementById('wa-msg');
+    try {
+      const r = await api('/filial/whatsapp/conectar', {
+        method: 'POST',
+        body: {},
+        token: token(),
+      });
+      if (msg) msg.textContent = `Webhook: ${r.webhook}`;
+      toast('Webhook conectado');
+    } catch (err) {
+      if (msg) msg.textContent = err.message;
       alert(err.message);
     }
   });
@@ -599,20 +665,24 @@ async function viewAdminUsuarios() {
 
 async function viewAdminFiliais() {
   const list = await api('/admin/bases', { token: token() });
-  const rows = list
+  const rows = (Array.isArray(list) ? list : [])
     .map(
       (b) => `<tr>
       <td>${b.codigo}</td><td>${b.nome}</td>
+      <td>${b.ativa ? 'Ativa' : 'Inativa'}</td>
       <td>${b.total_ativos || 0}</td><td>${b.total_usuarios || 0}</td>
-      <td><button class="btn btn-small" data-rename="${b.id}" data-nome="${b.nome}">Renomear</button>
-          <button class="btn btn-small" data-wa="${b.id}">WhatsApp</button></td>
+      <td style="display:flex;gap:.35rem;flex-wrap:wrap">
+        <button class="btn btn-small" data-rename="${b.id}" data-nome="${b.nome}">Renomear</button>
+        <button class="btn btn-small" data-del="${b.id}" data-codigo="${b.codigo}" style="color:#b91c1c">Excluir</button>
+      </td>
     </tr>`
     )
     .join('');
   app().innerHTML = shell(
-    `<section class="detail-head"><h1>Filiais</h1></section>
+    `<section class="detail-head"><h1>Filiais</h1>
+     <p class="lede">WhatsApp é configurado pelo gerente em Meu perfil.</p></section>
      <section class="table-panel"><div class="table-wrap"><table>
-       <thead><tr><th>Código</th><th>Nome</th><th>Ativos</th><th>Usuários</th><th></th></tr></thead>
+       <thead><tr><th>Código</th><th>Nome</th><th>Status</th><th>Ativos</th><th>Usuários</th><th></th></tr></thead>
        <tbody>${rows}</tbody>
      </table></div></section>`,
     { adminMode: true }
@@ -634,100 +704,26 @@ async function viewAdminFiliais() {
       }
     });
   });
-  document.querySelectorAll('[data-wa]').forEach((btn) => {
-    btn.addEventListener('click', () => setRoute('admin-whatsapp', btn.dataset.wa));
-  });
-}
-
-async function viewAdminWhatsapp() {
-  const list = await api('/admin/bases', { token: token() });
-  const selectedId = detailId || String(list[0]?.id || '');
-  let cfg = null;
-  let status = null;
-  if (selectedId) {
-    cfg = await api(`/admin/bases/${selectedId}/whatsapp`, { token: token() });
-    try {
-      status = await api(`/admin/whatsapp/status?base_id=${selectedId}`, { token: token() });
-    } catch {
-      status = { ok: false };
-    }
-  }
-  const opts = list
-    .map(
-      (b) =>
-        `<option value="${b.id}" ${String(b.id) === String(selectedId) ? 'selected' : ''}>${b.codigo} — ${b.nome}</option>`
-    )
-    .join('');
-  app().innerHTML = shell(
-    `<section class="detail-head">
-      <h1>WhatsApp da filial</h1>
-      <p class="lede">Token WuzAPI, grupo e alertas de OS · painel em ${cfg?.dashboard_url || 'WuzAPI'}</p>
-    </section>
-    <section class="form-card" style="padding:1rem;background:var(--surface);border-radius:var(--radius);max-width:640px">
-      <label>Filial
-        <select id="wa-base">${opts}</select>
-      </label>
-      ${
-        cfg
-          ? `<form id="form-wa" style="display:grid;gap:.7rem;margin-top:1rem">
-        <label>Número (opcional)<input name="whatsapp" value="${cfg.whatsapp || ''}" placeholder="5511999999999"></label>
-        <label>Grupo JID<input name="whatsapp_grupo" value="${cfg.whatsapp_grupo || ''}" placeholder="120363...@g.us"></label>
-        <label>Token WuzAPI da filial<input name="wuzapi_token" value="${cfg.wuzapi_token || ''}" autocomplete="off"></label>
-        <label style="display:flex;align-items:center;gap:.5rem">
-          <input type="checkbox" name="whatsapp_alerta" ${cfg.whatsapp_alerta ? 'checked' : ''}> Alertas ao abrir/encerrar OS
-        </label>
-        <p style="font-size:.85rem;color:var(--text-muted)">Status sessão: ${status?.ok ? 'OK' : 'indisponível / sem sessão'} · WuzAPI ${cfg.wuzapi_url || ''}</p>
-        <div style="display:flex;flex-wrap:wrap;gap:.5rem">
-          <button class="btn btn-primary" type="submit">Salvar</button>
-          <button class="btn btn-small" type="button" id="wa-conectar">Conectar webhook</button>
-          <a class="btn btn-small" href="${cfg.dashboard_url || '#'}" target="_blank" rel="noopener">Dashboard WuzAPI</a>
-        </div>
-        <p id="wa-msg" style="font-size:.85rem;color:var(--text-muted)"></p>
-      </form>`
-          : '<p>Nenhuma filial.</p>'
+  document.querySelectorAll('[data-del]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (
+        !confirm(
+          `Excluir a filial ${btn.dataset.codigo}? Isso remove usuários, equipamentos e histórico dela.`
+        )
+      ) {
+        return;
       }
-    </section>`,
-    { adminMode: true }
-  );
-  bindShell();
-  document.getElementById('wa-base')?.addEventListener('change', (e) => {
-    setRoute('admin-whatsapp', e.target.value);
-  });
-  document.getElementById('form-wa')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const body = {
-      whatsapp: fd.get('whatsapp'),
-      whatsapp_grupo: fd.get('whatsapp_grupo'),
-      wuzapi_token: fd.get('wuzapi_token'),
-      whatsapp_alerta: fd.get('whatsapp_alerta') === 'on',
-    };
-    try {
-      await api(`/admin/bases/${selectedId}/whatsapp`, {
-        method: 'PATCH',
-        body,
-        token: token(),
-      });
-      toast('WhatsApp salvo');
-      render();
-    } catch (err) {
-      alert(err.message);
-    }
-  });
-  document.getElementById('wa-conectar')?.addEventListener('click', async () => {
-    const msg = document.getElementById('wa-msg');
-    try {
-      const r = await api('/admin/whatsapp/conectar', {
-        method: 'POST',
-        body: { base_id: selectedId },
-        token: token(),
-      });
-      if (msg) msg.textContent = `Webhook: ${r.webhook}`;
-      toast('Webhook conectado');
-    } catch (err) {
-      if (msg) msg.textContent = err.message;
-      alert(err.message);
-    }
+      try {
+        await api(`/admin/bases/${btn.dataset.del}`, {
+          method: 'DELETE',
+          token: token(),
+        });
+        toast('Filial excluída');
+        render();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
   });
 }
 
@@ -819,7 +815,6 @@ export async function render() {
     if (route === 'login' || (!auth && !route.startsWith('admin'))) return viewLogin();
     if (auth?.admin) {
       if (route === 'admin-filiais') return viewAdminFiliais();
-      if (route === 'admin-whatsapp') return viewAdminWhatsapp();
       if (route === 'admin-historico') return viewAdminHistorico();
       return viewAdminUsuarios();
     }
