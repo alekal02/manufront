@@ -531,26 +531,28 @@ async function viewWhatsappWizard() {
       body = `
         <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:520px;display:grid;gap:.75rem">
           <h2 style="margin:0">Conectar WhatsApp</h2>
-          <ol style="margin:0;padding-left:1.2rem;color:var(--text-muted);font-size:.9rem;line-height:1.45">
-            <li>Abra <a href="http://24.199.86.195:8080/dashboard" target="_blank" rel="noopener">WuzAPI dashboard</a> e copie o <strong>token</strong> do usuário</li>
-            <li>Cole abaixo → <strong>Salvar token</strong></li>
-            <li>Clique <strong>Gerar QR</strong> e escaneie no celular (Aparelhos conectados)</li>
-          </ol>
-          <label>Token WuzAPI da filial
-            <input id="wa-token" value="${cfg.wuzapi_token || ''}" placeholder="cole o token do dashboard WuzAPI" autocomplete="off">
-          </label>
+          <p style="margin:0;color:var(--text-muted);font-size:.9rem">
+            O token é <strong>gerado automaticamente</strong>. Clique no botão, escaneie o QR no celular
+            (WhatsApp → Aparelhos conectados).
+          </p>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="btn btn-primary" type="button" id="wa-start">Gerar / atualizar QR</button>
-            <button class="btn btn-small" type="button" id="wa-save-token">Salvar token</button>
+            <button class="btn btn-primary" type="button" id="wa-start">Gerar token + QR</button>
           </div>
+          <details style="font-size:.85rem;color:var(--text-muted)">
+            <summary>Avançado: usar token manual</summary>
+            <label style="display:block;margin-top:.6rem">Token WuzAPI
+              <input id="wa-token" value="${cfg.wuzapi_token || ''}" placeholder="opcional" autocomplete="off">
+            </label>
+            <button class="btn btn-small" type="button" id="wa-save-token" style="margin-top:.5rem">Salvar token manual</button>
+          </details>
           <div id="wa-qr-box" style="min-height:220px;display:grid;place-items:center;background:#f8fafc;border-radius:12px;border:1px dashed var(--border)">
             ${
               qrcode
                 ? `<img src="${qrcode}" alt="QR WhatsApp" style="max-width:240px;width:100%;height:auto" />`
-                : '<p style="color:var(--text-muted);padding:1rem;text-align:center">Clique em Gerar QR para começar</p>'
+                : '<p style="color:var(--text-muted);padding:1rem;text-align:center">Clique em Gerar token + QR</p>'
             }
           </div>
-          <p id="wa-hint" style="margin:0;font-size:.85rem;color:var(--text-muted)">Sem token válido o QR não aparece (erro 401 no WuzAPI).</p>
+          <p id="wa-hint" style="margin:0;font-size:.85rem;color:var(--text-muted)">No Render precisa existir WUZAPI_ADMIN_TOKEN (token admin do WuzAPI).</p>
         </section>`;
     } else if (passo === 'grupo') {
       const opts = grupos
@@ -622,13 +624,9 @@ async function viewWhatsappWizard() {
       const tok = document.getElementById('wa-token')?.value?.trim() || '';
       const hint = document.getElementById('wa-hint');
       const box = document.getElementById('wa-qr-box');
-      if (!tok && !cfg.wuzapi_token) {
-        alert('Cole o token do WuzAPI antes de gerar o QR');
-        return;
-      }
       try {
-        if (hint) hint.textContent = 'Gerando QR… (pode levar alguns segundos)';
-        if (box) box.innerHTML = '<p style="color:var(--text-muted)">Conectando ao WuzAPI…</p>';
+        if (hint) hint.textContent = 'Gerando token e QR…';
+        if (box) box.innerHTML = '<p style="color:var(--text-muted)">Criando usuário no WuzAPI…</p>';
         if (tok) {
           cfg = await api('/filial/whatsapp', {
             method: 'PATCH',
@@ -638,6 +636,7 @@ async function viewWhatsappWizard() {
         }
         const r = await api('/filial/whatsapp/conectar', { method: 'POST', body: {}, token: token() });
         qrcode = r.qrcode || '';
+        if (r.provision?.token) cfg.wuzapi_token = r.provision.token;
         if (r.loggedIn) {
           stopPoll();
           passo = 'grupo';
@@ -646,14 +645,14 @@ async function viewWhatsappWizard() {
           return;
         }
         if (!qrcode) {
-          if (hint) hint.textContent = r.mensagem || 'QR vazio — confira o token';
+          if (hint) hint.textContent = r.mensagem || 'QR vazio';
           if (box) {
             box.innerHTML = `<p style="color:#b91c1c;padding:1rem;text-align:center">${r.mensagem || 'Não veio QR do WuzAPI'}</p>`;
           }
           return;
         }
         paint();
-        if (hint) hint.textContent = 'Aguardando leitura do QR…';
+        if (hint) hint.textContent = r.mensagem || 'Aguardando leitura do QR…';
         startPoll();
       } catch (err) {
         if (hint) hint.textContent = err.message;
