@@ -506,7 +506,14 @@ async function viewWhatsappWizard() {
     loggedIn: false,
     passo: 'qr',
   }));
-  let passo = st.passo || (st.loggedIn ? (cfg.whatsapp_grupo ? 'pronto' : 'grupo') : 'qr');
+  // Só avança de passo se loggedIn for verdadeiro (não confundir com connected)
+  let loggedIn = Boolean(st.loggedIn);
+  let passo =
+    loggedIn && cfg.whatsapp_grupo
+      ? 'pronto'
+      : loggedIn
+        ? 'grupo'
+        : 'qr';
   let qrcode = '';
   let grupos = [];
   let pollId = null;
@@ -515,6 +522,23 @@ async function viewWhatsappWizard() {
     if (pollId) {
       clearInterval(pollId);
       pollId = null;
+    }
+  };
+
+  const doDesconectar = async () => {
+    if (!confirm('Desconectar WhatsApp e limpar todos os dados da última conexão?')) return;
+    stopPoll();
+    try {
+      const r = await api('/filial/whatsapp/desconectar', { method: 'POST', body: {}, token: token() });
+      cfg = { ...cfg, ...r, whatsapp: '', whatsapp_grupo: '', whatsapp_alerta: 0, wuzapi_token: '' };
+      loggedIn = false;
+      passo = 'qr';
+      qrcode = '';
+      grupos = [];
+      toast(r.mensagem || 'Desconectado');
+      paint();
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -532,27 +556,20 @@ async function viewWhatsappWizard() {
         <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:520px;display:grid;gap:.75rem">
           <h2 style="margin:0">Conectar WhatsApp</h2>
           <p style="margin:0;color:var(--text-muted);font-size:.9rem">
-            O token é <strong>gerado automaticamente</strong>. Clique no botão, escaneie o QR no celular
-            (WhatsApp → Aparelhos conectados).
+            Clique em <strong>Gerar QR Code</strong>, escaneie no celular
+            (WhatsApp → Aparelhos conectados). O token é criado automaticamente.
           </p>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="btn btn-primary" type="button" id="wa-start">Gerar token + QR</button>
+            <button class="btn btn-primary" type="button" id="wa-start">Gerar QR Code</button>
           </div>
-          <details style="font-size:.85rem;color:var(--text-muted)">
-            <summary>Avançado: usar token manual</summary>
-            <label style="display:block;margin-top:.6rem">Token WuzAPI
-              <input id="wa-token" value="${cfg.wuzapi_token || ''}" placeholder="opcional" autocomplete="off">
-            </label>
-            <button class="btn btn-small" type="button" id="wa-save-token" style="margin-top:.5rem">Salvar token manual</button>
-          </details>
           <div id="wa-qr-box" style="min-height:220px;display:grid;place-items:center;background:#f8fafc;border-radius:12px;border:1px dashed var(--border)">
             ${
               qrcode
                 ? `<img src="${qrcode}" alt="QR WhatsApp" style="max-width:240px;width:100%;height:auto" />`
-                : '<p style="color:var(--text-muted);padding:1rem;text-align:center">Clique em Gerar token + QR</p>'
+                : '<p style="color:var(--text-muted);padding:1rem;text-align:center">Clique em Gerar QR Code</p>'
             }
           </div>
-          <p id="wa-hint" style="margin:0;font-size:.85rem;color:var(--text-muted)">No Render precisa existir WUZAPI_ADMIN_TOKEN (token admin do WuzAPI).</p>
+          <p id="wa-hint" style="margin:0;font-size:.85rem;color:var(--text-muted)">Aguardando geração do QR…</p>
         </section>`;
     } else if (passo === 'grupo') {
       const opts = grupos
@@ -577,6 +594,7 @@ async function viewWhatsappWizard() {
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
             <button class="btn btn-primary" type="button" id="wa-save-grupo">Salvar grupo e ativar chatbot</button>
             <button class="btn btn-small" type="button" id="wa-reload-grupos">Atualizar lista</button>
+            <button class="btn btn-small" type="button" id="wa-desconectar" style="color:#b91c1c">Desconectar</button>
           </div>
         </section>`;
     } else {
@@ -586,13 +604,12 @@ async function viewWhatsappWizard() {
           <p style="margin:0">Grupo: <strong>${cfg.whatsapp_grupo || '—'}</strong></p>
           <p style="margin:0;color:var(--text-muted);font-size:.9rem">
             No grupo, envie <strong>código</strong>, <strong>patrimônio</strong> ou <strong>nome</strong> do equipamento.
-            O bot responde com um link para <strong>abrir ou encerrar manutenção</strong> (mesma tela de OS do sistema).
+            O bot responde com um link para <strong>abrir ou encerrar manutenção</strong>.
           </p>
           <p style="margin:0;font-size:.85rem">Comandos: <code>ajuda</code> · <code>lista</code></p>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
             <button class="btn btn-small" type="button" id="wa-trocar-grupo">Trocar grupo</button>
-            <button class="btn btn-small" type="button" id="wa-reconectar">Reconectar / novo QR</button>
-            <a class="btn btn-small" href="${cfg.dashboard_url || '#'}" target="_blank" rel="noopener">Dashboard WuzAPI</a>
+            <button class="btn btn-small" type="button" id="wa-desconectar" style="color:#b91c1c">Desconectar</button>
           </div>
         </section>`;
     }
@@ -606,53 +623,34 @@ async function viewWhatsappWizard() {
       ${body}`);
     bindShell();
 
-    document.getElementById('wa-save-token')?.addEventListener('click', async () => {
-      const tok = document.getElementById('wa-token')?.value || '';
-      try {
-        cfg = await api('/filial/whatsapp', {
-          method: 'PATCH',
-          body: { wuzapi_token: tok },
-          token: token(),
-        });
-        toast('Token salvo');
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-
     document.getElementById('wa-start')?.addEventListener('click', async () => {
-      const tok = document.getElementById('wa-token')?.value?.trim() || '';
       const hint = document.getElementById('wa-hint');
       const box = document.getElementById('wa-qr-box');
       try {
         if (hint) hint.textContent = 'Gerando token e QR…';
-        if (box) box.innerHTML = '<p style="color:var(--text-muted)">Criando usuário no WuzAPI…</p>';
-        if (tok) {
-          cfg = await api('/filial/whatsapp', {
-            method: 'PATCH',
-            body: { wuzapi_token: tok },
-            token: token(),
-          });
-        }
+        if (box) box.innerHTML = '<p style="color:var(--text-muted)">Criando sessão no WuzAPI…</p>';
         const r = await api('/filial/whatsapp/conectar', { method: 'POST', body: {}, token: token() });
         qrcode = r.qrcode || '';
         if (r.provision?.token) cfg.wuzapi_token = r.provision.token;
-        if (r.loggedIn) {
+        // Só avança se loggedIn real — connected sozinho não basta
+        if (r.loggedIn === true) {
           stopPoll();
+          loggedIn = true;
           passo = 'grupo';
           await loadGrupos();
           paint();
+          toast('WhatsApp já estava conectado');
           return;
         }
         if (!qrcode) {
-          if (hint) hint.textContent = r.mensagem || 'QR vazio';
+          if (hint) hint.textContent = r.mensagem || r.error || 'QR vazio — verifique WUZAPI_ADMIN_TOKEN no Render';
           if (box) {
-            box.innerHTML = `<p style="color:#b91c1c;padding:1rem;text-align:center">${r.mensagem || 'Não veio QR do WuzAPI'}</p>`;
+            box.innerHTML = `<p style="color:#b91c1c;padding:1rem;text-align:center">${r.mensagem || r.error || 'Não veio QR do WuzAPI'}</p>`;
           }
           return;
         }
         paint();
-        if (hint) hint.textContent = r.mensagem || 'Aguardando leitura do QR…';
+        if (hint) hint.textContent = r.mensagem || 'Escaneie o QR. Aguardando conexão…';
         startPoll();
       } catch (err) {
         if (hint) hint.textContent = err.message;
@@ -699,12 +697,7 @@ async function viewWhatsappWizard() {
       paint();
     });
 
-    document.getElementById('wa-reconectar')?.addEventListener('click', () => {
-      stopPoll();
-      passo = 'qr';
-      qrcode = '';
-      paint();
-    });
+    document.getElementById('wa-desconectar')?.addEventListener('click', doDesconectar);
   };
 
   const loadGrupos = async () => {
@@ -718,8 +711,9 @@ async function viewWhatsappWizard() {
       try {
         const r = await api('/filial/whatsapp/qr', { token: token() });
         if (r.qrcode) qrcode = r.qrcode;
-        if (r.loggedIn) {
+        if (r.loggedIn === true) {
           stopPoll();
+          loggedIn = true;
           passo = 'grupo';
           await loadGrupos();
           paint();
@@ -740,7 +734,10 @@ async function viewWhatsappWizard() {
     try {
       await loadGrupos();
     } catch (err) {
-      if (err.status === 400) passo = 'qr';
+      if (err.status === 400) {
+        passo = 'qr';
+        loggedIn = false;
+      }
     }
   }
   paint();
