@@ -1,4 +1,4 @@
-import { api, clearAuth, loadAuth, saveAuth } from './api.js';
+import { API, api, clearAuth, loadAuth, saveAuth } from './api.js';
 
 let auth = loadAuth();
 let meta = { tipos_equipamento: {}, locais: {}, locais_manutencao: {} };
@@ -142,11 +142,13 @@ async function viewLogin() {
     if (!bases.length) {
       const data = await api('/bases');
       bases = Array.isArray(data) ? data : [];
-      if (!bases.length) loadError = 'API não retornou filiais. Confira VITE_API_URL (deve apontar para o Render).';
+      if (!bases.length) {
+        loadError = `API não retornou filiais (base: ${API}). Defina VITE_API_URL=https://manuback.onrender.com/api na Vercel e faça Redeploy.`;
+      }
     }
   } catch (err) {
     bases = [];
-    loadError = err.message || 'Falha ao conectar na API';
+    loadError = `${err.message || 'Falha ao conectar na API'} (base: ${API})`;
   }
   const options = bases
     .map((b) => `<option value="${b.id}">${b.codigo} — ${b.nome}</option>`)
