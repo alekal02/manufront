@@ -495,36 +495,65 @@ async function viewPerfil() {
 }
 
 async function viewAdminUsuarios() {
-  if (!bases.length) bases = await api('/bases');
+  if (!bases.length) {
+    const data = await api('/bases');
+    bases = Array.isArray(data) ? data : [];
+  }
   const users = await api('/admin/usuarios', { token: token() });
+  const listUsers = Array.isArray(users) ? users : [];
   const baseOpts = bases.map((b) => `<option value="${b.id}">${b.codigo}</option>`).join('');
-  const rows = users
+  const rows = listUsers
     .map(
       (u) => `<tr>
       <td>${u.base_codigo || u.base_id}</td><td>${u.usuario}</td><td>${u.nome}</td><td>${u.nivel}</td>
       <td>${u.ativo ? 'Ativo' : 'Inativo'}</td>
-      <td><button class="btn btn-small" data-toggle="${u.id}">Toggle</button></td>
+      <td style="display:flex;gap:.35rem;flex-wrap:wrap">
+        <button class="btn btn-small" data-toggle="${u.id}">${u.ativo ? 'Desativar' : 'Ativar'}</button>
+        <button class="btn btn-small" data-senha="${u.id}" data-login="${u.usuario}">Senha</button>
+      </td>
     </tr>`
     )
     .join('');
   app().innerHTML = shell(
     `
-    <section class="detail-head"><h1>Usuários</h1></section>
+    <section class="detail-head"><h1>Usuários</h1>
+      <p class="lede">Logins ativos só na filial 01 (fiscal / gerente). Altere senhas abaixo.</p>
+    </section>
+
+    <form id="form-admin-senha" class="form-card" style="display:grid;gap:.5rem;max-width:480px;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+      <h2 style="margin:0;font-size:1.05rem">Senha do admin</h2>
+      <label>Senha atual<input type="password" name="senha_atual" required autocomplete="current-password"></label>
+      <label>Nova senha<input type="password" name="nova_senha" required minlength="4" autocomplete="new-password"></label>
+      <button class="btn btn-primary" type="submit">Alterar senha do admin</button>
+    </form>
+
     <form id="form-user" style="display:grid;gap:.5rem;max-width:480px;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+      <h2 style="margin:0;font-size:1.05rem">Novo usuário</h2>
       <select name="base_id">${baseOpts}</select>
       <input name="usuario" placeholder="login" required>
       <input name="nome" placeholder="nome" required>
       <select name="nivel"><option value="fiscal">fiscal</option><option value="gerente">gerente</option></select>
-      <input name="senha" placeholder="senha" required>
+      <input name="senha" placeholder="senha" required minlength="4">
       <button class="btn btn-primary" type="submit">Criar</button>
     </form>
     <section class="table-panel"><div class="table-wrap"><table>
       <thead><tr><th>Filial</th><th>Login</th><th>Nome</th><th>Nível</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows || '<tr><td colspan="6">Nenhum usuário</td></tr>'}</tbody>
     </table></div></section>`,
     { adminMode: true }
   );
   bindShell();
+  document.getElementById('form-admin-senha').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await api('/admin/password', { method: 'POST', body, token: token() });
+      toast('Senha do admin alterada');
+      e.target.reset();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
   document.getElementById('form-user').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target).entries());
@@ -541,6 +570,26 @@ async function viewAdminUsuarios() {
       try {
         await api(`/admin/usuarios/${btn.dataset.toggle}/toggle`, { method: 'POST', token: token() });
         render();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+  document.querySelectorAll('[data-senha]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const nova = prompt(`Nova senha para ${btn.dataset.login}`);
+      if (!nova) return;
+      if (nova.length < 4) {
+        alert('Mínimo 4 caracteres');
+        return;
+      }
+      try {
+        await api(`/admin/usuarios/${btn.dataset.senha}/senha`, {
+          method: 'POST',
+          body: { nova_senha: nova },
+          token: token(),
+        });
+        toast('Senha do usuário atualizada');
       } catch (err) {
         alert(err.message);
       }
