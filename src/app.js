@@ -516,6 +516,7 @@ async function viewWhatsappWizard() {
         : 'qr';
   let qrcode = '';
   let grupos = [];
+  let gruposErro = '';
   let pollId = null;
 
   const stopPoll = () => {
@@ -535,6 +536,7 @@ async function viewWhatsappWizard() {
       passo = 'qr';
       qrcode = '';
       grupos = [];
+      gruposErro = '';
       toast(r.mensagem || 'Desconectado');
       paint();
     } catch (err) {
@@ -581,13 +583,19 @@ async function viewWhatsappWizard() {
             </label>`
         )
         .join('');
+      const emptyMsg = gruposErro
+        ? `<p style="padding:1rem;color:#b91c1c">${gruposErro}</p>`
+        : '<p style="padding:1rem;color:var(--text-muted)">Nenhum grupo encontrado. Entre no grupo com este chip e clique em Atualizar lista. Ou cole o ID do grupo abaixo.</p>';
       body = `
         <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:560px;display:grid;gap:.75rem">
           <h2 style="margin:0">Selecionar grupo</h2>
           <p style="margin:0;color:var(--text-muted);font-size:.9rem">WhatsApp conectado. Escolha o grupo onde o chatbot vai responder.</p>
           <div id="wa-grupos" style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:10px">
-            ${opts || '<p style="padding:1rem;color:var(--text-muted)">Nenhum grupo encontrado. Entre no grupo com o chip e atualize.</p>'}
+            ${opts || emptyMsg}
           </div>
+          <label style="display:grid;gap:.35rem;font-size:.9rem">Colar ID do grupo (opcional)
+            <input id="wa-grupo-manual" placeholder="ex: 120362023605733675@g.us" autocomplete="off">
+          </label>
           <label style="display:flex;align-items:center;gap:.5rem">
             <input type="checkbox" id="wa-alerta" ${cfg.whatsapp_alerta ? 'checked' : ''}> Alertas ao abrir/encerrar OS neste grupo
           </label>
@@ -662,14 +670,16 @@ async function viewWhatsappWizard() {
     });
 
     document.getElementById('wa-reload-grupos')?.addEventListener('click', async () => {
+      toast('Buscando grupos…');
       await loadGrupos();
       paint();
     });
 
     document.getElementById('wa-save-grupo')?.addEventListener('click', async () => {
-      const selected = document.querySelector('input[name="grupo"]:checked')?.value;
+      const manual = document.getElementById('wa-grupo-manual')?.value?.trim() || '';
+      const selected = manual || document.querySelector('input[name="grupo"]:checked')?.value;
       if (!selected) {
-        alert('Selecione um grupo');
+        alert('Selecione um grupo na lista ou cole o ID (…@g.us)');
         return;
       }
       try {
@@ -701,8 +711,17 @@ async function viewWhatsappWizard() {
   };
 
   const loadGrupos = async () => {
-    const data = await api('/filial/whatsapp/grupos', { token: token() });
-    grupos = data.grupos || [];
+    try {
+      const data = await api('/filial/whatsapp/grupos', { token: token() });
+      grupos = data.grupos || [];
+      gruposErro = grupos.length
+        ? ''
+        : 'Nenhum grupo retornado pelo WhatsApp. Confirme que o chip entrou no grupo e tente Atualizar lista.';
+    } catch (err) {
+      grupos = [];
+      gruposErro = err.message || 'Falha ao buscar grupos';
+      if (err.status === 400) throw err;
+    }
   };
 
   const startPoll = () => {
