@@ -137,7 +137,17 @@ function bindShell() {
 }
 
 async function viewLogin() {
-  if (!bases.length) bases = await api('/bases');
+  let loadError = '';
+  try {
+    if (!bases.length) {
+      const data = await api('/bases');
+      bases = Array.isArray(data) ? data : [];
+      if (!bases.length) loadError = 'API não retornou filiais. Confira VITE_API_URL (deve apontar para o Render).';
+    }
+  } catch (err) {
+    bases = [];
+    loadError = err.message || 'Falha ao conectar na API';
+  }
   const options = bases
     .map((b) => `<option value="${b.id}">${b.codigo} — ${b.nome}</option>`)
     .join('');
@@ -146,10 +156,11 @@ async function viewLogin() {
       <form class="auth-card form-card" id="login-form" style="width:min(420px,100%);padding:1.5rem;background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow)">
         <h1 style="font-family:var(--font-display);margin-bottom:.5rem">ManuControl</h1>
         <p class="subtitle" style="color:var(--text-muted);margin-bottom:1rem">Login da filial</p>
-        <label>Filial<select name="base_id" required>${options}</select></label>
+        ${loadError ? `<div class="alert error" style="margin-bottom:1rem;padding:.75rem;background:#fee;border-radius:8px;font-size:.9rem">${loadError}<br><small>Backend Flask não roda na Vercel — use Render. Front: <code>manufront.vercel.app</code></small></div>` : ''}
+        <label>Filial<select name="base_id" required ${loadError ? 'disabled' : ''}>${options || '<option value="">—</option>'}</select></label>
         <label style="margin-top:.75rem;display:block">Usuário<input name="usuario" required autocomplete="username" /></label>
         <label style="margin-top:.75rem;display:block">Senha<input name="senha" type="password" required autocomplete="current-password" /></label>
-        <button class="btn btn-primary" style="margin-top:1rem;width:100%" type="submit">Entrar</button>
+        <button class="btn btn-primary" style="margin-top:1rem;width:100%" type="submit" ${loadError ? 'disabled' : ''}>Entrar</button>
         <p style="margin-top:1rem;font-size:.85rem;color:var(--text-muted)">Admin? <a href="#/admin-login" id="go-admin">Acesso administrativo</a></p>
         <p style="margin-top:.5rem;font-size:.8rem;color:var(--text-muted)">fiscal/gerente · senha 1234</p>
       </form>
@@ -160,6 +171,7 @@ async function viewLogin() {
   });
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (loadError) return;
     const fd = new FormData(e.target);
     try {
       const data = await api('/auth/login', {
