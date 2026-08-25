@@ -544,103 +544,188 @@ async function viewWhatsappWizard() {
     }
   };
 
+  const esc = (s) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const nomeGrupo = (jid) => {
+    const g = grupos.find((x) => x.jid === jid);
+    if (g?.nome && g.nome !== jid) return g.nome;
+    if (cfg.whatsapp_grupo_nome) return cfg.whatsapp_grupo_nome;
+    return jid ? 'Grupo configurado' : '—';
+  };
+
   const paint = () => {
     const steps = `
-      <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
-        <span class="badge ${passo === 'qr' ? 'warn' : 'ok'}">1. QR</span>
-        <span class="badge ${passo === 'grupo' ? 'warn' : passo === 'pronto' ? 'ok' : ''}">2. Grupo</span>
-        <span class="badge ${passo === 'pronto' ? 'ok' : ''}">3. Chatbot</span>
+      <div style="display:flex;gap:.45rem;margin-bottom:1.1rem;flex-wrap:wrap" aria-label="Etapas">
+        <span class="badge ${passo === 'qr' ? 'warn' : 'ok'}">1 · QR</span>
+        <span class="badge ${passo === 'grupo' ? 'warn' : passo === 'pronto' ? 'ok' : ''}">2 · Grupo</span>
+        <span class="badge ${passo === 'pronto' ? 'ok' : ''}">3 · Chatbot</span>
       </div>`;
 
     let body = '';
     if (passo === 'qr') {
       body = `
-        <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:520px;display:grid;gap:.75rem">
-          <h2 style="margin:0">Conectar WhatsApp</h2>
-          <p style="margin:0;color:var(--text-muted);font-size:.9rem">
-            Clique em <strong>Gerar QR Code</strong>, escaneie no celular
-            (WhatsApp → Aparelhos conectados). O token é criado automaticamente.
+        <section class="form-card" style="padding:1.35rem;background:var(--surface);border-radius:var(--radius);max-width:520px;display:grid;gap:.85rem;box-shadow:var(--shadow-sm)">
+          <h2 style="margin:0;font-size:1.25rem">Conectar WhatsApp</h2>
+          <p style="margin:0;color:var(--text-muted);font-size:.92rem;line-height:1.45">
+            Clique em <strong>Gerar QR Code</strong> e escaneie no celular
+            (WhatsApp → Aparelhos conectados).
           </p>
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="btn btn-primary" type="button" id="wa-start">Gerar QR Code</button>
-          </div>
+          <button class="btn btn-primary" type="button" id="wa-start" style="justify-self:start">Gerar QR Code</button>
           <div id="wa-qr-box" style="min-height:220px;display:grid;place-items:center;background:#f8fafc;border-radius:12px;border:1px dashed var(--border)">
             ${
               qrcode
                 ? `<img src="${qrcode}" alt="QR WhatsApp" style="max-width:240px;width:100%;height:auto" />`
-                : '<p style="color:var(--text-muted);padding:1rem;text-align:center">Clique em Gerar QR Code</p>'
+                : '<p style="color:var(--text-muted);padding:1rem;text-align:center;margin:0">Aguardando QR…</p>'
             }
           </div>
           <p id="wa-hint" style="margin:0;font-size:.85rem;color:var(--text-muted)">Aguardando geração do QR…</p>
         </section>`;
     } else if (passo === 'grupo') {
-      const opts = grupos
-        .map(
-          (g) =>
-            `<label style="display:flex;gap:.6rem;align-items:flex-start;padding:.55rem .4rem;border-bottom:1px solid var(--border)">
-              <input type="radio" name="grupo" value="${g.jid}" ${g.jid === cfg.whatsapp_grupo ? 'checked' : ''}>
-              <span><strong>${g.nome || g.jid}</strong><br><small style="color:var(--text-muted)">${g.jid}</small></span>
-            </label>`
-        )
+      const sorted = [...grupos].sort((a, b) =>
+        String(a.nome || a.jid).localeCompare(String(b.nome || b.jid), 'pt', { sensitivity: 'base' })
+      );
+      const opts = sorted
+        .map((g) => {
+          const checked = g.jid === cfg.whatsapp_grupo ? 'checked' : '';
+          const label = esc(g.nome && g.nome !== g.jid ? g.nome : 'Grupo sem nome');
+          return `
+            <label class="wa-grupo-item" style="
+              display:flex;align-items:center;gap:.75rem;
+              padding:.85rem 1rem;margin:0;cursor:pointer;
+              border-bottom:1px solid var(--border);transition:background .15s;
+            ">
+              <input type="radio" name="grupo" value="${esc(g.jid)}" ${checked}
+                style="width:1.1rem;height:1.1rem;accent-color:var(--primary);flex-shrink:0;margin:0">
+              <span style="font-weight:600;font-size:.95rem;line-height:1.3;color:var(--text)">${label}</span>
+            </label>`;
+        })
         .join('');
       const emptyMsg = gruposErro
-        ? `<p style="padding:1rem;color:#b91c1c">${gruposErro}</p>`
-        : '<p style="padding:1rem;color:var(--text-muted)">Nenhum grupo encontrado. Entre no grupo com este chip e clique em Atualizar lista. Ou cole o ID do grupo abaixo.</p>';
+        ? `<p style="padding:1.25rem;color:#b91c1c;margin:0;font-size:.9rem">${esc(gruposErro)}</p>`
+        : `<p style="padding:1.25rem;color:var(--text-muted);margin:0;font-size:.9rem">
+            Nenhum grupo encontrado. Entre no grupo com este chip e atualize a lista.
+          </p>`;
       body = `
-        <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:560px;display:grid;gap:.75rem">
-          <h2 style="margin:0">Selecionar grupo</h2>
-          <p style="margin:0;color:var(--text-muted);font-size:.9rem">WhatsApp conectado. Escolha o grupo onde o chatbot vai responder.</p>
-          <div id="wa-grupos" style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:10px">
-            ${opts || emptyMsg}
+        <section class="form-card" style="padding:1.35rem;background:var(--surface);border-radius:var(--radius);max-width:520px;display:grid;gap:1rem;box-shadow:var(--shadow-sm)">
+          <div style="display:grid;gap:.35rem">
+            <h2 style="margin:0;font-size:1.25rem">Escolher grupo</h2>
+            <p style="margin:0;color:var(--text-muted);font-size:.92rem;line-height:1.45">
+              Selecione o grupo onde o chatbot vai responder.
+            </p>
           </div>
-          <label style="display:grid;gap:.35rem;font-size:.9rem">Colar ID do grupo (opcional)
-            <input id="wa-grupo-manual" placeholder="ex: 120362023605733675@g.us" autocomplete="off">
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <input id="wa-busca-grupo" type="search" placeholder="Buscar grupo…" autocomplete="off"
+              style="flex:1;margin:0;min-width:0">
+            <button class="btn btn-secondary btn-small" type="button" id="wa-reload-grupos" title="Atualizar lista">Atualizar</button>
+          </div>
+          <div id="wa-grupos" style="
+            max-height:340px;overflow:auto;border:1px solid var(--border);
+            border-radius:12px;background:#fafbfc;
+          ">${opts || emptyMsg}</div>
+          <details style="font-size:.85rem;color:var(--text-muted)">
+            <summary style="cursor:pointer">Não achou o grupo? Colar ID</summary>
+            <input id="wa-grupo-manual" placeholder="12036…@g.us" autocomplete="off" style="margin-top:.55rem;width:100%">
+          </details>
+          <label style="display:inline-flex;align-items:center;gap:.55rem;font-size:.92rem;margin:0;cursor:pointer;width:fit-content">
+            <input type="checkbox" id="wa-alerta" ${cfg.whatsapp_alerta ? 'checked' : ''}
+              style="width:1.05rem;height:1.05rem;accent-color:var(--primary);margin:0;flex-shrink:0">
+            <span>Receber alertas ao abrir/encerrar OS</span>
           </label>
-          <label style="display:flex;align-items:center;gap:.5rem">
-            <input type="checkbox" id="wa-alerta" ${cfg.whatsapp_alerta ? 'checked' : ''}> Alertas ao abrir/encerrar OS neste grupo
-          </label>
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="btn btn-primary" type="button" id="wa-save-grupo">Salvar grupo e ativar chatbot</button>
-            <button class="btn btn-small" type="button" id="wa-reload-grupos">Atualizar lista</button>
-            <button class="btn btn-small" type="button" id="wa-desconectar" style="color:#b91c1c">Desconectar</button>
+          <div style="display:grid;gap:.55rem;margin-top:.15rem">
+            <button class="btn btn-primary" type="button" id="wa-save-grupo" style="width:100%">
+              Salvar e ativar chatbot
+            </button>
+            <button class="btn btn-ghost btn-small" type="button" id="wa-desconectar" style="color:#b91c1c;justify-self:center">
+              Desconectar WhatsApp
+            </button>
           </div>
         </section>`;
     } else {
+      const nome = esc(nomeGrupo(cfg.whatsapp_grupo));
       body = `
-        <section class="form-card" style="padding:1.25rem;background:var(--surface);border-radius:var(--radius);max-width:560px;display:grid;gap:.75rem">
-          <h2 style="margin:0">Chatbot ativo</h2>
-          <p style="margin:0">Grupo: <strong>${cfg.whatsapp_grupo || '—'}</strong></p>
-          <p style="margin:0;color:var(--text-muted);font-size:.9rem">
-            No grupo, envie <strong>código</strong>, <strong>patrimônio</strong> ou <strong>nome</strong> do equipamento.
-            O bot responde com um link para <strong>abrir ou encerrar manutenção</strong>.
-          </p>
-          <p style="margin:0;font-size:.85rem">Comandos: <code>ajuda</code> · <code>lista</code></p>
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="btn btn-small" type="button" id="wa-trocar-grupo">Trocar grupo</button>
-            <button class="btn btn-small" type="button" id="wa-desconectar" style="color:#b91c1c">Desconectar</button>
+        <section class="form-card" style="padding:1.35rem;background:var(--surface);border-radius:var(--radius);max-width:520px;display:grid;gap:1rem;box-shadow:var(--shadow-sm)">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+            <div style="display:grid;gap:.3rem;min-width:0">
+              <h2 style="margin:0;font-size:1.25rem">Chatbot ativo</h2>
+              <p style="margin:0;color:var(--text-muted);font-size:.9rem">Respondendo neste grupo</p>
+            </div>
+            <span class="badge ok">Conectado</span>
           </div>
+          <div style="
+            display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+            padding:1rem 1.1rem;border:1px solid var(--border);border-radius:12px;background:#f8fafc;
+          ">
+            <div style="min-width:0;display:grid;gap:.2rem">
+              <strong style="font-size:1.05rem;line-height:1.3">${nome}</strong>
+              <span style="font-size:.8rem;color:var(--text-muted)">Grupo do WhatsApp</span>
+            </div>
+            <button class="btn btn-secondary btn-small" type="button" id="wa-trocar-grupo" style="flex-shrink:0">
+              Trocar grupo
+            </button>
+          </div>
+          <p style="margin:0;color:var(--text-muted);font-size:.92rem;line-height:1.5">
+            No grupo, envie <strong>código</strong>, <strong>patrimônio</strong> ou <strong>nome</strong> do equipamento.
+            O bot responde com um link para abrir ou encerrar manutenção.
+          </p>
+          <p style="margin:0;font-size:.85rem;color:var(--text-muted)">Comandos: <code>ajuda</code> · <code>lista</code></p>
+          <button class="btn btn-ghost btn-small" type="button" id="wa-desconectar" style="color:#b91c1c;justify-self:start">
+            Desconectar WhatsApp
+          </button>
         </section>`;
     }
 
     app().innerHTML = shell(`
       <section class="detail-head">
         <h1>WhatsApp da filial</h1>
-        <p class="lede">Filial ${user()?.base_codigo} — fluxo QR → grupo → chatbot</p>
+        <p class="lede">Filial ${user()?.base_codigo} — QR → grupo → chatbot</p>
       </section>
       ${steps}
       ${body}`);
     bindShell();
+
+    // Destaque visual no item selecionado + busca
+    document.querySelectorAll('.wa-grupo-item').forEach((el) => {
+      const sync = () => {
+        const on = el.querySelector('input')?.checked;
+        el.style.background = on ? 'rgba(5,150,105,.08)' : '';
+      };
+      el.addEventListener('mouseenter', () => {
+        if (!el.querySelector('input')?.checked) el.style.background = 'rgba(0,0,0,.03)';
+      });
+      el.addEventListener('mouseleave', sync);
+      el.querySelector('input')?.addEventListener('change', () => {
+        document.querySelectorAll('.wa-grupo-item').forEach((x) => {
+          x.style.background = x.querySelector('input')?.checked ? 'rgba(5,150,105,.08)' : '';
+        });
+      });
+      sync();
+    });
+
+    const busca = document.getElementById('wa-busca-grupo');
+    if (busca) {
+      busca.addEventListener('input', () => {
+        const q = busca.value.trim().toLowerCase();
+        document.querySelectorAll('.wa-grupo-item').forEach((el) => {
+          const text = el.textContent?.toLowerCase() || '';
+          el.style.display = !q || text.includes(q) ? 'flex' : 'none';
+        });
+      });
+    }
 
     document.getElementById('wa-start')?.addEventListener('click', async () => {
       const hint = document.getElementById('wa-hint');
       const box = document.getElementById('wa-qr-box');
       try {
         if (hint) hint.textContent = 'Gerando token e QR…';
-        if (box) box.innerHTML = '<p style="color:var(--text-muted)">Criando sessão no WuzAPI…</p>';
+        if (box) box.innerHTML = '<p style="color:var(--text-muted);margin:0">Criando sessão no WuzAPI…</p>';
         const r = await api('/filial/whatsapp/conectar', { method: 'POST', body: {}, token: token() });
         qrcode = r.qrcode || '';
         if (r.provision?.token) cfg.wuzapi_token = r.provision.token;
-        // Só avança se loggedIn real — connected sozinho não basta
         if (r.loggedIn === true) {
           stopPoll();
           loggedIn = true;
@@ -653,7 +738,7 @@ async function viewWhatsappWizard() {
         if (!qrcode) {
           if (hint) hint.textContent = r.mensagem || r.error || 'QR vazio — verifique WUZAPI_ADMIN_TOKEN no Render';
           if (box) {
-            box.innerHTML = `<p style="color:#b91c1c;padding:1rem;text-align:center">${r.mensagem || r.error || 'Não veio QR do WuzAPI'}</p>`;
+            box.innerHTML = `<p style="color:#b91c1c;padding:1rem;text-align:center;margin:0">${r.mensagem || r.error || 'Não veio QR do WuzAPI'}</p>`;
           }
           return;
         }
@@ -663,25 +748,32 @@ async function viewWhatsappWizard() {
       } catch (err) {
         if (hint) hint.textContent = err.message;
         if (box) {
-          box.innerHTML = `<p style="color:#b91c1c;padding:1rem;text-align:center">${err.message}</p>`;
+          box.innerHTML = `<p style="color:#b91c1c;padding:1rem;text-align:center;margin:0">${err.message}</p>`;
         }
         alert(err.message);
       }
     });
 
     document.getElementById('wa-reload-grupos')?.addEventListener('click', async () => {
-      toast('Buscando grupos…');
+      const btn = document.getElementById('wa-reload-grupos');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '…';
+      }
       await loadGrupos();
       paint();
+      toast(grupos.length ? `${grupos.length} grupos` : 'Lista atualizada');
     });
 
     document.getElementById('wa-save-grupo')?.addEventListener('click', async () => {
       const manual = document.getElementById('wa-grupo-manual')?.value?.trim() || '';
       const selected = manual || document.querySelector('input[name="grupo"]:checked')?.value;
       if (!selected) {
-        alert('Selecione um grupo na lista ou cole o ID (…@g.us)');
+        alert('Selecione um grupo na lista');
         return;
       }
+      const btn = document.getElementById('wa-save-grupo');
+      if (btn) btn.disabled = true;
       try {
         const r = await api('/filial/whatsapp/grupo', {
           method: 'POST',
@@ -692,16 +784,23 @@ async function viewWhatsappWizard() {
           token: token(),
         });
         cfg.whatsapp_grupo = r.whatsapp_grupo;
+        cfg.whatsapp_grupo_nome = nomeGrupo(selected);
         cfg.whatsapp_alerta = document.getElementById('wa-alerta')?.checked ? 1 : 0;
         passo = 'pronto';
         toast('Chatbot ativado');
         paint();
       } catch (err) {
+        if (btn) btn.disabled = false;
         alert(err.message);
       }
     });
 
     document.getElementById('wa-trocar-grupo')?.addEventListener('click', async () => {
+      const btn = document.getElementById('wa-trocar-grupo');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Carregando…';
+      }
       passo = 'grupo';
       await loadGrupos();
       paint();
@@ -749,11 +848,11 @@ async function viewWhatsappWizard() {
     }, 3000);
   };
 
-  if (passo === 'grupo') {
+  if (passo === 'grupo' || passo === 'pronto') {
     try {
       await loadGrupos();
     } catch (err) {
-      if (err.status === 400) {
+      if (err.status === 400 && passo === 'grupo') {
         passo = 'qr';
         loggedIn = false;
       }
