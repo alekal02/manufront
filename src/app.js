@@ -169,7 +169,6 @@ async function viewLogin() {
         <label style="margin-top:.75rem;display:block">Senha<input name="senha" type="password" required autocomplete="current-password" /></label>
         <button class="btn btn-primary" style="margin-top:1rem;width:100%" type="submit" ${loadError ? 'disabled' : ''}>Entrar</button>
         <p style="margin-top:1rem;font-size:.85rem;color:var(--text-muted)">Admin? <a href="#/admin-login" id="go-admin">Acesso administrativo</a></p>
-        <p style="margin-top:.5rem;font-size:.8rem;color:var(--text-muted)">fiscal/gerente · senha 1234</p>
       </form>
     </div>`;
   document.getElementById('go-admin')?.addEventListener('click', (e) => {
