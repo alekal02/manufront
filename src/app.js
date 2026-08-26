@@ -1139,6 +1139,9 @@ export async function render() {
     if (err.status === 401) {
       clearAuth();
       auth = null;
+      if (location.hash !== '#/login' && location.hash !== '#/admin-login') {
+        location.hash = '#/login';
+      }
       return viewLogin();
     }
     app().innerHTML = `<div class="alert error" style="margin:2rem">${err.message}</div>`;
@@ -1146,7 +1149,16 @@ export async function render() {
 }
 
 export function boot() {
-  window.addEventListener('hashchange', () => render());
+  window.addEventListener('hashchange', () => {
+    render().catch(() => {});
+  });
+  window.addEventListener('manu:auth-expired', () => {
+    auth = null;
+    if (location.hash !== '#/login' && !String(location.hash).includes('admin-login')) {
+      location.hash = '#/login';
+      render().catch(() => {});
+    }
+  });
   // CSS extras for badges used by SPA
   const style = document.createElement('style');
   style.textContent = `

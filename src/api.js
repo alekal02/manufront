@@ -47,6 +47,14 @@ export async function api(path, { method = 'GET', body, token, formData } = {}) 
   if (ctype.includes('application/json')) {
     const data = await res.json();
     if (!res.ok) {
+      if (res.status === 401) {
+        clearAuth();
+        try {
+          window.dispatchEvent(new CustomEvent('manu:auth-expired'));
+        } catch {
+          /* ignore */
+        }
+      }
       const err = new Error(data.error || res.statusText);
       err.status = res.status;
       err.data = data;
@@ -55,6 +63,7 @@ export async function api(path, { method = 'GET', body, token, formData } = {}) 
     return data;
   }
   if (!res.ok) {
+    if (res.status === 401) clearAuth();
     const err = new Error(res.statusText);
     err.status = res.status;
     throw err;
