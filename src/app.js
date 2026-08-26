@@ -914,19 +914,19 @@ async function viewAdminUsuarios() {
   }
   const users = await api('/admin/usuarios', { token: token() });
   const listUsers = Array.isArray(users) ? users : [];
-  const baseOpts = bases.map((b) => `<option value="${b.id}">${b.codigo}</option>`).join('');
+  const baseOpts = bases.map((b) => `<option value="${b.id}">${escHtml(b.codigo)}</option>`).join('');
   const rows = listUsers
     .map(
       (u) => `<tr>
-      <td data-label="Filial">${u.base_codigo || u.base_id}</td>
-      <td data-label="Login">${u.usuario}</td>
-      <td data-label="Nome">${u.nome}</td>
-      <td data-label="Nível">${u.nivel}</td>
+      <td data-label="Filial">${escHtml(u.base_codigo || u.base_id)}</td>
+      <td data-label="Login">${escHtml(u.usuario)}</td>
+      <td data-label="Nome">${escHtml(u.nome)}</td>
+      <td data-label="Nível">${escHtml(u.nivel)}</td>
       <td data-label="Status">${u.ativo ? 'Ativo' : 'Inativo'}</td>
       <td data-label="Ações" class="td-actions">
-        <button class="btn btn-small" data-edit="${u.id}" data-login="${u.usuario}" data-nome="${u.nome}" data-nivel="${u.nivel}">Editar</button>
-        <button class="btn btn-small" data-toggle="${u.id}">${u.ativo ? 'Desativar' : 'Ativar'}</button>
-        <button class="btn btn-small" data-senha="${u.id}" data-login="${u.usuario}">Senha</button>
+        <button class="btn btn-small" type="button" data-edit="${escHtml(u.id)}" data-login="${escHtml(u.usuario)}" data-nome="${escHtml(u.nome)}" data-nivel="${escHtml(u.nivel)}">Editar</button>
+        <button class="btn btn-small" type="button" data-toggle="${escHtml(u.id)}">${u.ativo ? 'Desativar' : 'Ativar'}</button>
+        <button class="btn btn-small" type="button" data-senha="${escHtml(u.id)}" data-login="${escHtml(u.usuario)}">Senha</button>
       </td>
     </tr>`
     )
@@ -953,6 +953,29 @@ async function viewAdminUsuarios() {
       <input name="senha" placeholder="senha" required minlength="4">
       <button class="btn btn-primary" type="submit">Criar</button>
     </form>
+
+    <div id="user-edit-box" class="form-card" hidden style="display:none;gap:.65rem;max-width:480px;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+      <h2 style="margin:0;font-size:1.05rem">Editar usuário</h2>
+      <p id="user-edit-hint" style="margin:0;color:var(--text-muted);font-size:.9rem"></p>
+      <label>Login<input id="user-edit-login" type="text" required maxlength="40" autocomplete="off"></label>
+      <label>Nome<input id="user-edit-nome" type="text" required maxlength="80" autocomplete="off"></label>
+      <label>Nível<select id="user-edit-nivel"><option value="fiscal">fiscal</option><option value="gerente">gerente</option></select></label>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="user-edit-save">Salvar</button>
+        <button class="btn btn-small" type="button" id="user-edit-cancel">Cancelar</button>
+      </div>
+    </div>
+
+    <div id="user-senha-box" class="form-card" hidden style="display:none;gap:.65rem;max-width:480px;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+      <h2 style="margin:0;font-size:1.05rem">Nova senha</h2>
+      <p id="user-senha-hint" style="margin:0;color:var(--text-muted);font-size:.9rem"></p>
+      <label>Nova senha<input id="user-senha-input" type="password" required minlength="4" autocomplete="new-password"></label>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="user-senha-save">Salvar senha</button>
+        <button class="btn btn-small" type="button" id="user-senha-cancel">Cancelar</button>
+      </div>
+    </div>
+
     <section class="table-panel"><div class="table-wrap"><table>
       <thead><tr><th>Filial</th><th>Login</th><th>Nome</th><th>Nível</th><th>Status</th><th></th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6">Nenhum usuário</td></tr>'}</tbody>
@@ -960,6 +983,37 @@ async function viewAdminUsuarios() {
     { adminMode: true }
   );
   bindShell();
+
+  let editId = null;
+  let senhaId = null;
+  const editBox = document.getElementById('user-edit-box');
+  const senhaBox = document.getElementById('user-senha-box');
+  const editLogin = document.getElementById('user-edit-login');
+  const editNome = document.getElementById('user-edit-nome');
+  const editNivel = document.getElementById('user-edit-nivel');
+  const senhaInput = document.getElementById('user-senha-input');
+
+  const showBox = (el) => {
+    if (!el) return;
+    el.hidden = false;
+    el.style.display = 'grid';
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+  const hideBox = (el) => {
+    if (!el) return;
+    el.hidden = true;
+    el.style.display = 'none';
+  };
+  const closeEdit = () => {
+    editId = null;
+    hideBox(editBox);
+  };
+  const closeSenha = () => {
+    senhaId = null;
+    if (senhaInput) senhaInput.value = '';
+    hideBox(senhaBox);
+  };
+
   document.getElementById('form-admin-senha').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target).entries());
@@ -983,7 +1037,8 @@ async function viewAdminUsuarios() {
     }
   });
   document.querySelectorAll('[data-toggle]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
       try {
         await api(`/admin/usuarios/${btn.dataset.toggle}/toggle`, { method: 'POST', token: token() });
         render();
@@ -992,54 +1047,84 @@ async function viewAdminUsuarios() {
       }
     });
   });
+
+  document.getElementById('user-edit-cancel')?.addEventListener('click', closeEdit);
+  document.getElementById('user-edit-save')?.addEventListener('click', async () => {
+    if (!editId) return;
+    const usuario = String(editLogin?.value || '').trim();
+    const nome = String(editNome?.value || '').trim();
+    const nivel = String(editNivel?.value || '').trim().toLowerCase();
+    if (!usuario || !nome) {
+      alert('Login e nome são obrigatórios');
+      return;
+    }
+    if (!['fiscal', 'gerente'].includes(nivel)) {
+      alert('Nível deve ser fiscal ou gerente');
+      return;
+    }
+    try {
+      await api(`/admin/usuarios/${editId}`, {
+        method: 'PATCH',
+        body: { usuario, nome, nivel },
+        token: token(),
+      });
+      toast('Usuário atualizado');
+      closeEdit();
+      render();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  document.getElementById('user-senha-cancel')?.addEventListener('click', closeSenha);
+  document.getElementById('user-senha-save')?.addEventListener('click', async () => {
+    if (!senhaId) return;
+    const nova = String(senhaInput?.value || '');
+    if (nova.length < 4) {
+      alert('Mínimo 4 caracteres');
+      return;
+    }
+    try {
+      await api(`/admin/usuarios/${senhaId}/senha`, {
+        method: 'POST',
+        body: { nova_senha: nova },
+        token: token(),
+      });
+      toast('Senha do usuário atualizada');
+      closeSenha();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
   document.querySelectorAll('[data-edit]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const login = prompt('Login (usuário)', btn.dataset.login || '');
-      if (login === null) return;
-      const nome = prompt('Nome', btn.dataset.nome || '');
-      if (nome === null) return;
-      const nivelRaw = prompt('Nível (fiscal ou gerente)', btn.dataset.nivel || 'fiscal');
-      if (nivelRaw === null) return;
-      const nivel = String(nivelRaw).trim().toLowerCase();
-      if (!['fiscal', 'gerente'].includes(nivel)) {
-        alert('Nível deve ser fiscal ou gerente');
-        return;
-      }
-      try {
-        await api(`/admin/usuarios/${btn.dataset.edit}`, {
-          method: 'PATCH',
-          body: {
-            usuario: String(login).trim(),
-            nome: String(nome).trim(),
-            nivel,
-          },
-          token: token(),
-        });
-        toast('Usuário atualizado');
-        render();
-      } catch (err) {
-        alert(err.message);
-      }
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSenha();
+      editId = btn.dataset.edit;
+      const hint = document.getElementById('user-edit-hint');
+      if (hint) hint.textContent = `Editando: ${btn.dataset.login || ''}`;
+      if (editLogin) editLogin.value = btn.dataset.login || '';
+      if (editNome) editNome.value = btn.dataset.nome || '';
+      if (editNivel) editNivel.value = ['fiscal', 'gerente'].includes(btn.dataset.nivel) ? btn.dataset.nivel : 'fiscal';
+      showBox(editBox);
+      editLogin?.focus();
+      editLogin?.select();
     });
   });
+
   document.querySelectorAll('[data-senha]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const nova = prompt(`Nova senha para ${btn.dataset.login}`);
-      if (!nova) return;
-      if (nova.length < 4) {
-        alert('Mínimo 4 caracteres');
-        return;
-      }
-      try {
-        await api(`/admin/usuarios/${btn.dataset.senha}/senha`, {
-          method: 'POST',
-          body: { nova_senha: nova },
-          token: token(),
-        });
-        toast('Senha do usuário atualizada');
-      } catch (err) {
-        alert(err.message);
-      }
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeEdit();
+      senhaId = btn.dataset.senha;
+      const hint = document.getElementById('user-senha-hint');
+      if (hint) hint.textContent = `Usuário: ${btn.dataset.login || ''}`;
+      if (senhaInput) senhaInput.value = '';
+      showBox(senhaBox);
+      senhaInput?.focus();
     });
   });
 }
