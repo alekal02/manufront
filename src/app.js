@@ -918,9 +918,13 @@ async function viewAdminUsuarios() {
   const rows = listUsers
     .map(
       (u) => `<tr>
-      <td>${u.base_codigo || u.base_id}</td><td>${u.usuario}</td><td>${u.nome}</td><td>${u.nivel}</td>
-      <td>${u.ativo ? 'Ativo' : 'Inativo'}</td>
-      <td style="display:flex;gap:.35rem;flex-wrap:wrap">
+      <td data-label="Filial">${u.base_codigo || u.base_id}</td>
+      <td data-label="Login">${u.usuario}</td>
+      <td data-label="Nome">${u.nome}</td>
+      <td data-label="Nível">${u.nivel}</td>
+      <td data-label="Status">${u.ativo ? 'Ativo' : 'Inativo'}</td>
+      <td data-label="Ações" class="td-actions">
+        <button class="btn btn-small" data-edit="${u.id}" data-login="${u.usuario}" data-nome="${u.nome}" data-nivel="${u.nivel}">Editar</button>
         <button class="btn btn-small" data-toggle="${u.id}">${u.ativo ? 'Desativar' : 'Ativar'}</button>
         <button class="btn btn-small" data-senha="${u.id}" data-login="${u.usuario}">Senha</button>
       </td>
@@ -982,6 +986,36 @@ async function viewAdminUsuarios() {
     btn.addEventListener('click', async () => {
       try {
         await api(`/admin/usuarios/${btn.dataset.toggle}/toggle`, { method: 'POST', token: token() });
+        render();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+  document.querySelectorAll('[data-edit]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const login = prompt('Login (usuário)', btn.dataset.login || '');
+      if (login === null) return;
+      const nome = prompt('Nome', btn.dataset.nome || '');
+      if (nome === null) return;
+      const nivelRaw = prompt('Nível (fiscal ou gerente)', btn.dataset.nivel || 'fiscal');
+      if (nivelRaw === null) return;
+      const nivel = String(nivelRaw).trim().toLowerCase();
+      if (!['fiscal', 'gerente'].includes(nivel)) {
+        alert('Nível deve ser fiscal ou gerente');
+        return;
+      }
+      try {
+        await api(`/admin/usuarios/${btn.dataset.edit}`, {
+          method: 'PATCH',
+          body: {
+            usuario: String(login).trim(),
+            nome: String(nome).trim(),
+            nivel,
+          },
+          token: token(),
+        });
+        toast('Usuário atualizado');
         render();
       } catch (err) {
         alert(err.message);

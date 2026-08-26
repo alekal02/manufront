@@ -1612,6 +1612,18 @@ textarea {
     margin-top: 0.15rem;
   }
 
+  .td-actions {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  .td-actions::before {
+    display: none !important;
+  }
+
   .page-content .form-card,
   .page-content section.form-card {
     max-width: 100% !important;
