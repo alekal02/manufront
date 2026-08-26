@@ -229,13 +229,18 @@ async function viewLogin() {
 
 async function viewAdminLogin() {
   app().innerHTML = `
-    <div style="min-height:100vh;display:grid;place-items:center;padding:2rem">
-      <form class="form-card" id="admin-login" style="width:min(420px,100%);padding:1.5rem;background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow)">
+    <div class="auth-shell">
+      <form class="auth-card form-card" id="admin-login">
+        <div class="login-mobile-brand">
+          <div class="brand-logo">M</div>
+          <strong>ManuControl</strong>
+        </div>
         <h1>Admin ManuControl</h1>
-        <label style="display:block;margin-top:1rem">Usuário<input name="usuario" required /></label>
-        <label style="display:block;margin-top:.75rem">Senha<input name="senha" type="password" required /></label>
-        <button class="btn btn-primary" style="margin-top:1rem;width:100%" type="submit">Entrar</button>
-        <p style="margin-top:1rem"><a href="#/login" id="back-login">Voltar ao login de filial</a></p>
+        <p class="subtitle">Acesso administrativo</p>
+        <label>Usuário<input name="usuario" required autocomplete="username" value="admin" /></label>
+        <label>Senha<input name="senha" type="password" required autocomplete="current-password" /></label>
+        <button class="btn btn-primary btn-full" type="submit">Entrar</button>
+        <p class="auth-admin-link"><a href="#/login" id="back-login">Voltar ao login de filial</a></p>
       </form>
     </div>`;
   document.getElementById('back-login')?.addEventListener('click', (e) => {
@@ -245,10 +250,12 @@ async function viewAdminLogin() {
   document.getElementById('admin-login').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const usuario = String(fd.get('usuario') || '').trim();
+    const senha = String(fd.get('senha') || '').trim();
     try {
       const data = await api('/auth/admin/login', {
         method: 'POST',
-        body: { usuario: fd.get('usuario'), senha: fd.get('senha') },
+        body: { usuario, senha },
       });
       auth = { token: data.token, admin: data.admin };
       saveAuth(auth);
