@@ -63,19 +63,39 @@ function toast(msg, type = 'success') {
 
 function shell(content, { adminMode = false } = {}) {
   const u = adminMode ? admin() : user();
-  const nav = adminMode
-    ? `
-      <a class="nav-item ${route === 'admin-usuarios' ? 'active' : ''}" data-go="admin-usuarios">Usuários</a>
-      <a class="nav-item ${route === 'admin-filiais' ? 'active' : ''}" data-go="admin-filiais">Filiais</a>
-      <a class="nav-item ${route === 'admin-historico' ? 'active' : ''}" data-go="admin-historico">Histórico</a>
-    `
-    : `
-      <a class="nav-item ${route === 'equipamentos' || route === 'equipamento' ? 'active' : ''}" data-go="equipamentos">Equipamentos</a>
-      ${isFiscal() ? `<a class="nav-item ${route === 'cadastro' ? 'active' : ''}" data-go="cadastro">Cadastro</a>` : ''}
-      ${isGerente() ? `<a class="nav-item ${route === 'relatorios' ? 'active' : ''}" data-go="relatorios">Relatórios</a>` : ''}
-      ${isGerente() ? `<a class="nav-item ${route === 'whatsapp' ? 'active' : ''}" data-go="whatsapp">WhatsApp</a>` : ''}
-      <a class="nav-item ${route === 'perfil' ? 'active' : ''}" data-go="perfil">Meu perfil</a>
-    `;
+  const navItems = adminMode
+    ? [
+        { go: 'admin-usuarios', label: 'Usuários', short: 'Users' },
+        { go: 'admin-filiais', label: 'Filiais', short: 'Filiais' },
+        { go: 'admin-historico', label: 'Histórico', short: 'Hist.' },
+      ]
+    : [
+        { go: 'equipamentos', label: 'Equipamentos', short: 'Equip.', active: route === 'equipamentos' || route === 'equipamento' },
+        ...(isFiscal() ? [{ go: 'cadastro', label: 'Cadastro', short: 'Cadastro' }] : []),
+        ...(isGerente() ? [{ go: 'relatorios', label: 'Relatórios', short: 'Relat.' }] : []),
+        ...(isGerente() ? [{ go: 'whatsapp', label: 'WhatsApp', short: 'Whats' }] : []),
+        { go: 'perfil', label: 'Meu perfil', short: 'Perfil' },
+      ];
+
+  const nav = navItems
+    .map((item) => {
+      const active =
+        item.active ||
+        route === item.go ||
+        (item.go === 'equipamentos' && route === 'equipamento');
+      return `<a class="nav-item ${active ? 'active' : ''}" data-go="${item.go}">${item.label}</a>`;
+    })
+    .join('');
+
+  const bottom = navItems
+    .map((item) => {
+      const active =
+        item.active ||
+        route === item.go ||
+        (item.go === 'equipamentos' && route === 'equipamento');
+      return `<a class="bottom-nav-item ${active ? 'active' : ''}" data-go="${item.go}"><span>${item.short || item.label}</span></a>`;
+    })
+    .join('');
 
   return `
   <div class="app-shell">
@@ -115,18 +135,23 @@ function shell(content, { adminMode = false } = {}) {
         </div>
       </header>
       <div class="page-content">${content}</div>
-      <footer class="app-footer">ManuControl · API + Vercel</footer>
+      <footer class="app-footer">ManuControl</footer>
+      <nav class="bottom-nav${adminMode ? ' admin-bottom-nav' : ''}" aria-label="Navegação">${bottom}
+        <a class="bottom-nav-item" href="#" id="btn-logout-mobile"><span>Sair</span></a>
+      </nav>
     </div>
   </div>`;
 }
 
 function bindShell() {
-  document.getElementById('btn-logout')?.addEventListener('click', (e) => {
+  const logout = (e) => {
     e.preventDefault();
     clearAuth();
     auth = null;
     render();
-  });
+  };
+  document.getElementById('btn-logout')?.addEventListener('click', logout);
+  document.getElementById('btn-logout-mobile')?.addEventListener('click', logout);
   document.getElementById('menu-toggle')?.addEventListener('click', () => {
     document.querySelector('.app-shell')?.classList.toggle('sidebar-open');
   });
@@ -136,6 +161,7 @@ function bindShell() {
   document.querySelectorAll('[data-go]').forEach((el) => {
     el.addEventListener('click', (e) => {
       e.preventDefault();
+      document.querySelector('.app-shell')?.classList.remove('sidebar-open');
       setRoute(el.getAttribute('data-go'));
     });
   });
@@ -159,16 +185,20 @@ async function viewLogin() {
     .map((b) => `<option value="${b.id}">${b.codigo} — ${b.nome}</option>`)
     .join('');
   app().innerHTML = `
-    <div class="auth-shell" style="min-height:100vh;display:grid;place-items:center;padding:2rem">
-      <form class="auth-card form-card" id="login-form" style="width:min(420px,100%);padding:1.5rem;background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow)">
-        <h1 style="font-family:var(--font-display);margin-bottom:.5rem">ManuControl</h1>
-        <p class="subtitle" style="color:var(--text-muted);margin-bottom:1rem">Login da filial</p>
-        ${loadError ? `<div class="alert error" style="margin-bottom:1rem;padding:.75rem;background:#fee;border-radius:8px;font-size:.9rem">${loadError}<br><small>Backend Flask não roda na Vercel — use Render. Front: <code>manufront.vercel.app</code></small></div>` : ''}
+    <div class="auth-shell">
+      <form class="auth-card form-card" id="login-form">
+        <div class="login-mobile-brand">
+          <div class="brand-logo">M</div>
+          <strong>ManuControl</strong>
+        </div>
+        <h1>ManuControl</h1>
+        <p class="subtitle">Login da filial</p>
+        ${loadError ? `<div class="alert error">${loadError}</div>` : ''}
         <label>Filial<select name="base_id" required ${loadError ? 'disabled' : ''}>${options || '<option value="">—</option>'}</select></label>
-        <label style="margin-top:.75rem;display:block">Usuário<input name="usuario" required autocomplete="username" /></label>
-        <label style="margin-top:.75rem;display:block">Senha<input name="senha" type="password" required autocomplete="current-password" /></label>
-        <button class="btn btn-primary" style="margin-top:1rem;width:100%" type="submit" ${loadError ? 'disabled' : ''}>Entrar</button>
-        <p style="margin-top:1rem;font-size:.85rem;color:var(--text-muted)">Admin? <a href="#/admin-login" id="go-admin">Acesso administrativo</a></p>
+        <label>Usuário<input name="usuario" required autocomplete="username" /></label>
+        <label>Senha<input name="senha" type="password" required autocomplete="current-password" /></label>
+        <button class="btn btn-primary btn-full" type="submit" ${loadError ? 'disabled' : ''}>Entrar</button>
+        <p class="auth-admin-link">Admin? <a href="#/admin-login" id="go-admin">Acesso administrativo</a></p>
       </form>
     </div>`;
   document.getElementById('go-admin')?.addEventListener('click', (e) => {
@@ -239,11 +269,11 @@ async function viewEquipamentos() {
   const rows = data.ativos
     .map(
       (a) => `
-    <tr data-id="${a.id}" class="click-row">
-      <td><strong>${a.codigo}</strong><div class="tiny muted">${a.nome}</div></td>
-      <td>${meta.tipos_equipamento[a.tipo] || a.tipo || '—'}</td>
-      <td>${a.em_manutencao ? '<span class="badge warn">Em manutenção</span>' : '<span class="badge ok">Operacional</span>'}</td>
-      <td>${meta.locais[a.local] || a.local || '—'}</td>
+    <tr data-id="${a.id}" class="click-row${a.em_manutencao ? ' row-manutencao' : ''}">
+      <td data-label="Código"><strong>${a.codigo}</strong><div class="tiny muted">${a.nome}</div></td>
+      <td data-label="Tipo">${meta.tipos_equipamento[a.tipo] || a.tipo || '—'}</td>
+      <td data-label="Status">${a.em_manutencao ? '<span class="badge warn">Em manutenção</span>' : '<span class="badge ok">Operacional</span>'}</td>
+      <td data-label="Local">${meta.locais[a.local] || a.local || '—'}</td>
     </tr>`
     )
     .join('');
@@ -258,7 +288,7 @@ async function viewEquipamentos() {
       <div class="stat"><span class="stat-label">Manutenção</span><strong>${data.pct_manutencao}%</strong></div>
     </section>
     <section class="table-panel">
-      <div class="table-wrap"><table>
+      <div class="table-wrap"><table id="tabela-ativos">
         <thead><tr><th>Código</th><th>Tipo</th><th>Status</th><th>Local</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="4">Nenhum equipamento</td></tr>'}</tbody>
       </table></div>
@@ -1287,7 +1317,25 @@ export function boot() {
     .alert{padding:.85rem 1rem;border-radius:12px;margin-bottom:.75rem}
     .alert.success{background:var(--success-light);color:var(--success)}
     .alert.error{background:var(--danger-light);color:var(--danger)}
-    @media(max-width:860px){.stats{grid-template-columns:1fr}}
+    @media(max-width:860px){.stats{grid-template-columns:1fr 1fr}.stats .stat:last-child{grid-column:1/-1}}
+    @media(max-width:768px){
+      .detail-head h1{font-size:1.35rem;line-height:1.2;word-break:break-word}
+      .form-card,.info-block{max-width:100%!important}
+      .page-content .btn{width:100%}
+      .page-content .btn-small{width:auto}
+      .auth-shell{min-height:100dvh;display:grid;place-items:center;padding:1rem;padding-bottom:max(1rem,env(safe-area-inset-bottom))}
+      .auth-card{width:100%;max-width:420px;padding:1.35rem 1.15rem;background:var(--surface);border-radius:18px;box-shadow:var(--shadow);display:grid;gap:.75rem}
+      .auth-card h1{font-family:var(--font-display);margin:0;font-size:1.45rem}
+      .auth-card .subtitle{margin:0;color:var(--text-muted)}
+      .auth-admin-link{margin:0;font-size:.85rem;color:var(--text-muted);text-align:center}
+      .login-mobile-brand{display:flex;align-items:center;gap:.65rem}
+      .login-mobile-brand .brand-logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(145deg,#34d399,#059669);color:#fff;display:grid;place-items:center;font-weight:800}
+      .login-mobile-brand strong{font-family:var(--font-display);color:var(--primary)}
+      .auth-card h1{display:none}
+      .app-footer{display:none}
+      .table-panel{overflow:visible}
+    }
+    @media(min-width:769px){.login-mobile-brand{display:none!important}.auth-shell{min-height:100vh;display:grid;place-items:center;padding:2rem}.auth-card{width:min(420px,100%);padding:1.5rem;background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow);display:grid;gap:.75rem}.auth-card h1{font-family:var(--font-display);margin:0}.auth-admin-link{margin:0;font-size:.85rem;color:var(--text-muted)}}
   `;
   document.head.appendChild(style);
   render();

@@ -1542,11 +1542,13 @@ textarea {
     padding: 0.75rem;
   }
 
-  #tabela-ativos thead {
+  #tabela-ativos thead,
+  .table-panel table thead {
     display: none;
   }
 
-  #tabela-ativos tbody tr {
+  #tabela-ativos tbody tr,
+  .table-panel table tbody tr {
     display: block;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1565,7 +1567,8 @@ textarea {
     display: none;
   }
 
-  #tabela-ativos td {
+  #tabela-ativos td,
+  .table-panel table td {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -1576,7 +1579,8 @@ textarea {
     text-align: right;
   }
 
-  #tabela-ativos td::before {
+  #tabela-ativos td::before,
+  .table-panel table td::before {
     content: attr(data-label);
     font-weight: 700;
     font-size: 0.72rem;
@@ -1587,15 +1591,37 @@ textarea {
     flex-shrink: 0;
   }
 
-  #tabela-ativos td:first-child {
+  #tabela-ativos td:first-child,
+  .table-panel table td:first-child {
     padding-top: 0;
     border-bottom: 1px solid var(--border);
     margin-bottom: 0.35rem;
     padding-bottom: 0.65rem;
+    text-align: left;
+    display: block;
   }
 
-  #tabela-ativos td:first-child::before {
+  #tabela-ativos td:first-child::before,
+  .table-panel table td:first-child::before {
     display: none;
+  }
+
+  .tiny.muted {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    margin-top: 0.15rem;
+  }
+
+  .page-content .form-card,
+  .page-content section.form-card {
+    max-width: 100% !important;
+    width: 100%;
+  }
+
+  .page-content .detail-head h1 {
+    font-size: 1.35rem;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
   }
 
   #tabela-ativos td:first-child .asset-code {
@@ -1607,7 +1633,7 @@ textarea {
     text-align: right;
   }
 
-  /* FormulÃ¡rios touch-friendly */
+  /* Formulários touch-friendly */
   input, select, textarea {
     font-size: 16px;
     min-height: 44px;
