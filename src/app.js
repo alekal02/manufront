@@ -1039,61 +1039,146 @@ async function viewAdminFiliais() {
 }
 
 async function viewAcessoRapido() {
-  await ensureMeta();
-  const d = await api(`/acesso-rapido/${detailId}`);
-  const a = d.ativo || d;
-  const manut = d.manutencao_aberta || null;
-  const baseLabel = d.base ? `${d.base.codigo} · ${d.base.nome}` : '';
   app().innerHTML = `
-    <div class="app-shell" style="max-width:720px;margin:0 auto;padding:1rem">
-      <header style="margin-bottom:1rem">
-        <p class="subtitle" style="margin:0">Acesso rápido WhatsApp</p>
-        <h1 style="margin:.2rem 0">${a.codigo} · ${a.nome}</h1>
-        <p class="lede">${baseLabel} · ${a.em_manutencao ? 'Em manutenção' : 'Operacional'}</p>
-        <p style="font-size:.8rem;color:var(--text-muted)">Expira: ${d.expira_em || '—'}</p>
-      </header>
-      <section class="info-block" style="padding:1rem;margin-bottom:1rem;background:var(--surface);border-radius:var(--radius)">
-        <p>Tipo: ${meta.tipos_equipamento[a.tipo] || a.tipo || '—'} · Local: ${meta.locais[a.local] || a.local || '—'}</p>
-        <p>${a.observacoes || ''}</p>
-      </section>
-      ${
-        a.em_manutencao
-          ? `<form id="form-encerrar" class="form-card" style="padding:1rem;background:var(--surface);border-radius:var(--radius)">
-              <h2>Encerrar OS ${manut?.os_numero || a.ordem_servico || ''}</h2>
-              <label>Data conclusão<input type="date" name="data_conclusao" required value="${new Date().toISOString().slice(0, 10)}"></label>
-              <label>Observações<textarea name="observacoes_encerramento" required></textarea></label>
-              <button class="btn btn-primary" type="submit">Encerrar manutenção</button>
-            </form>`
-          : `<form id="form-abrir" class="form-card" style="padding:1rem;background:var(--surface);border-radius:var(--radius)">
-              <h2>Abrir manutenção</h2>
-              <label>Nº OS<input name="os_numero" required></label>
-              <label>Data<input type="date" name="data_abertura" required value="${new Date().toISOString().slice(0, 10)}"></label>
-              <label>Responsável<input name="responsavel" value="Fiscal WhatsApp"></label>
-              <label>Local<select name="local"><option value="base">Na base</option><option value="terceiros">Em terceiros</option></select></label>
-              <label>Observações<textarea name="observacoes_abertura" required></textarea></label>
-              <button class="btn btn-primary" type="submit">Abrir OS</button>
-            </form>`
-      }
+    <div class="ar-page">
+      <div class="ar-card" style="padding:2rem;text-align:center;color:var(--text-muted)">Carregando…</div>
     </div>`;
+  try {
+    await ensureMeta();
+    const d = await api(`/acesso-rapido/${detailId}`);
+    paintAcessoRapido(d);
+  } catch (err) {
+    app().innerHTML = `
+      <div class="ar-page">
+        <div class="ar-card">
+          <p class="ar-brand">ManuControl</p>
+          <h1 class="ar-title">Link indisponível</h1>
+          <p class="ar-sub">${escHtml(err.message || 'Token inválido ou expirado')}</p>
+        </div>
+      </div>`;
+  }
+}
+
+function escHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function paintAcessoRapido(d) {
+  const a = d.ativo || d;
+  const manut = d.manutencao_aberta || a.manutencao_aberta || null;
+  const emManut = Boolean(a.em_manutencao);
+  const codigo = escHtml(a.codigo || '—');
+  const nome = escHtml(a.nome || '');
+  const tipo = escHtml(a.tipo_label || meta.tipos_equipamento[a.tipo] || a.tipo || '—');
+  const local = escHtml(meta.locais[a.local] || a.local || '—');
+  const patrimonio = escHtml(a.patrimonio || '—');
+  const baseNome = escHtml(d.base ? `${d.base.codigo} · ${d.base.nome}` : '—');
+  const obs = escHtml(a.observacoes || '');
+  const hoje = new Date().toISOString().slice(0, 10);
+  const expira = d.expira_em
+    ? new Date(d.expira_em).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—';
+
+  const formHtml = emManut
+    ? `
+      <form id="form-encerrar" class="ar-form">
+        <div class="ar-form-head">
+          <h2>Encerrar manutenção</h2>
+          <p>OS ${escHtml(manut?.os_numero || a.ordem_servico || '—')}</p>
+        </div>
+        <label>Data de conclusão
+          <input type="date" name="data_conclusao" required value="${hoje}">
+        </label>
+        <label>Observações do encerramento
+          <textarea name="observacoes_encerramento" required rows="3" placeholder="Descreva o serviço realizado"></textarea>
+        </label>
+        <button class="btn btn-primary ar-submit" type="submit">Encerrar OS</button>
+      </form>`
+    : `
+      <form id="form-abrir" class="ar-form">
+        <div class="ar-form-head">
+          <h2>Abrir manutenção</h2>
+          <p>Preencha os dados da ordem de serviço</p>
+        </div>
+        <div class="ar-grid-2">
+          <label>Nº da OS
+            <input name="os_numero" required placeholder="Ex: 1234" autocomplete="off">
+          </label>
+          <label>Data de abertura
+            <input type="date" name="data_abertura" required value="${hoje}">
+          </label>
+        </div>
+        <label>Responsável
+          <input name="responsavel" value="Fiscal WhatsApp" autocomplete="name">
+        </label>
+        <label>Local
+          <select name="local">
+            <option value="base">Na base</option>
+            <option value="terceiros">Em terceiros</option>
+          </select>
+        </label>
+        <label>Observações
+          <textarea name="observacoes_abertura" required rows="3" placeholder="Motivo da manutenção"></textarea>
+        </label>
+        <button class="btn btn-primary ar-submit" type="submit">Abrir OS</button>
+      </form>`;
+
+  app().innerHTML = `
+    <div class="ar-page">
+      <div class="ar-card">
+        <div class="ar-top">
+          <p class="ar-brand">ManuControl</p>
+          <span class="ar-badge ${emManut ? 'warn' : 'ok'}">${emManut ? 'Em manutenção' : 'Operacional'}</span>
+        </div>
+        <h1 class="ar-title">${codigo}</h1>
+        <p class="ar-name">${nome && nome !== codigo ? nome : 'Equipamento'}</p>
+        <p class="ar-sub">Acesso rápido · ${baseNome}</p>
+
+        <div class="ar-meta">
+          <div><span>Tipo</span><strong>${tipo}</strong></div>
+          <div><span>Local</span><strong>${local}</strong></div>
+          <div><span>Patrimônio</span><strong>${patrimonio}</strong></div>
+          <div><span>Link válido até</span><strong>${escHtml(expira)}</strong></div>
+        </div>
+        ${obs ? `<p class="ar-obs">${obs}</p>` : ''}
+        ${formHtml}
+      </div>
+    </div>`;
+
   document.getElementById('form-abrir')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
     const body = Object.fromEntries(new FormData(e.target).entries());
     try {
       await api(`/acesso-rapido/${detailId}/manutencao/abrir`, { method: 'POST', body });
       toast('Manutenção aberta');
       render();
     } catch (err) {
+      if (btn) btn.disabled = false;
       alert(err.message);
     }
   });
   document.getElementById('form-encerrar')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
     const body = Object.fromEntries(new FormData(e.target).entries());
     try {
       await api(`/acesso-rapido/${detailId}/manutencao/encerrar`, { method: 'POST', body });
       toast('Manutenção encerrada');
       render();
     } catch (err) {
+      if (btn) btn.disabled = false;
       alert(err.message);
     }
   });
