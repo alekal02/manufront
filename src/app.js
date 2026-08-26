@@ -661,7 +661,8 @@ async function viewWhatsappWizard() {
           <div style="display:grid;gap:.35rem">
             <h2 style="margin:0;font-size:1.25rem">Escolher grupo</h2>
             <p style="margin:0;color:var(--text-muted);font-size:.92rem;line-height:1.45">
-              Selecione o grupo onde o chatbot vai responder.
+              Selecione o grupo desta filial. O chatbot só lê esse grupo e só responde a
+              <strong>código / identificação</strong> ou <strong>patrimônio</strong>.
             </p>
           </div>
           <div style="display:flex;gap:.5rem;align-items:center">
@@ -715,10 +716,9 @@ async function viewWhatsappWizard() {
             </button>
           </div>
           <p style="margin:0;color:var(--text-muted);font-size:.92rem;line-height:1.5">
-            No grupo, envie <strong>código</strong>, <strong>patrimônio</strong> ou <strong>nome</strong> do equipamento.
-            O bot responde com um link para abrir ou encerrar manutenção.
+            No grupo, envie só o <strong>código / identificação</strong> (ex.: VAR-01) ou o <strong>patrimônio</strong>.
+            Conversas, nomes e outros comandos são ignorados.
           </p>
-          <p style="margin:0;font-size:.85rem;color:var(--text-muted)">Comandos: <code>ajuda</code> · <code>lista</code></p>
           <button class="btn btn-ghost btn-small" type="button" id="wa-desconectar" style="color:#b91c1c;justify-self:start">
             Desconectar WhatsApp
           </button>
@@ -728,7 +728,7 @@ async function viewWhatsappWizard() {
     app().innerHTML = shell(`
       <section class="detail-head">
         <h1>WhatsApp da filial</h1>
-        <p class="lede">Filial ${user()?.base_codigo} — QR → grupo → chatbot</p>
+        <p class="lede">Filial ${user()?.base_codigo} — o chatbot só responde no grupo salvo</p>
       </section>
       ${steps}
       ${body}`);
