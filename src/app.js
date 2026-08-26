@@ -31,8 +31,13 @@ function isGerente() {
 function setRoute(name, id = null) {
   route = name;
   detailId = id;
-  location.hash = id ? `#/${name}/${id}` : `#/${name}`;
-  render();
+  const next = id ? `#/${name}/${id}` : `#/${name}`;
+  // Só muda o hash — o listener hashchange chama render() uma vez (evita fetch duplo)
+  if (location.hash === next) {
+    render().catch(() => {});
+  } else {
+    location.hash = next;
+  }
 }
 
 function parseHash() {
@@ -226,8 +231,12 @@ async function viewAdminLogin() {
 }
 
 async function viewEquipamentos() {
-  await ensureMeta();
-  const data = await api('/ativos?com_stats=1', { token: token() });
+  app().innerHTML = shell(`<p style="color:var(--text-muted);padding:1rem">Carregando equipamentos…</p>`);
+  bindShell();
+  const [_, data] = await Promise.all([
+    ensureMeta(),
+    api('/ativos?com_stats=1', { token: token() }),
+  ]);
   const rows = data.ativos
     .map(
       (a) => `
@@ -525,6 +534,7 @@ async function viewWhatsappWizard() {
       pollId = null;
     }
   };
+  window.__waStopPoll = stopPoll;
 
   const doDesconectar = async () => {
     if (!confirm('Desconectar WhatsApp e limpar todos os dados da última conexão?')) return;
@@ -1110,6 +1120,14 @@ async function viewAdminHistorico() {
 
 export async function render() {
   parseHash();
+  // Para polling WhatsApp ao sair da tela (evita leak e re-renders)
+  if (route !== 'whatsapp' && typeof window.__waStopPoll === 'function') {
+    try {
+      window.__waStopPoll();
+    } catch {
+      /* ignore */
+    }
+  }
   try {
     if (route === 'r' && detailId) return viewAcessoRapido();
     if (route === 'admin-login') return viewAdminLogin();
