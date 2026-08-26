@@ -1049,12 +1049,14 @@ async function viewAdminFiliais() {
   const rows = (Array.isArray(list) ? list : [])
     .map(
       (b) => `<tr>
-      <td>${b.codigo}</td><td>${b.nome}</td>
-      <td>${b.ativa ? 'Ativa' : 'Inativa'}</td>
-      <td>${b.total_ativos || 0}</td><td>${b.total_usuarios || 0}</td>
-      <td style="display:flex;gap:.35rem;flex-wrap:wrap">
-        <button class="btn btn-small" data-rename="${b.id}" data-nome="${b.nome}">Renomear</button>
-        <button class="btn btn-small" data-del="${b.id}" data-codigo="${b.codigo}" style="color:#b91c1c">Excluir</button>
+      <td data-label="Código">${escHtml(b.codigo)}</td>
+      <td data-label="Nome"><span class="filial-nome" data-id="${escHtml(b.id)}">${escHtml(b.nome)}</span></td>
+      <td data-label="Status">${b.ativa ? 'Ativa' : 'Inativa'}</td>
+      <td data-label="Ativos">${b.total_ativos || 0}</td>
+      <td data-label="Usuários">${b.total_usuarios || 0}</td>
+      <td data-label="Ações" class="td-actions">
+        <button class="btn btn-small" type="button" data-rename="${escHtml(b.id)}" data-nome="${escHtml(b.nome)}">Renomear</button>
+        <button class="btn btn-small" type="button" data-del="${escHtml(b.id)}" data-codigo="${escHtml(b.codigo)}" style="color:#b91c1c">Excluir</button>
       </td>
     </tr>`
     )
@@ -1062,6 +1064,15 @@ async function viewAdminFiliais() {
   app().innerHTML = shell(
     `<section class="detail-head"><h1>Filiais</h1>
      <p class="lede">WhatsApp é configurado pelo gerente em Meu perfil.</p></section>
+     <div id="filial-rename-box" class="form-card" hidden style="display:none;gap:.65rem;max-width:480px;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+       <h2 style="margin:0;font-size:1.05rem">Renomear filial</h2>
+       <p id="filial-rename-hint" style="margin:0;color:var(--text-muted);font-size:.9rem"></p>
+       <label>Novo nome<input id="filial-rename-input" type="text" required maxlength="80" autocomplete="off"></label>
+       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+         <button class="btn btn-primary" type="button" id="filial-rename-save">Salvar</button>
+         <button class="btn btn-small" type="button" id="filial-rename-cancel">Cancelar</button>
+       </div>
+     </div>
      <section class="table-panel"><div class="table-wrap"><table>
        <thead><tr><th>Código</th><th>Nome</th><th>Status</th><th>Ativos</th><th>Usuários</th><th></th></tr></thead>
        <tbody>${rows}</tbody>
@@ -1069,26 +1080,76 @@ async function viewAdminFiliais() {
     { adminMode: true }
   );
   bindShell();
+
+  let renameId = null;
+  const box = document.getElementById('filial-rename-box');
+  const input = document.getElementById('filial-rename-input');
+  const hint = document.getElementById('filial-rename-hint');
+
+  const closeRename = () => {
+    renameId = null;
+    if (box) {
+      box.hidden = true;
+      box.style.display = 'none';
+    }
+  };
+
+  const openRename = (id, nomeAtual) => {
+    renameId = id;
+    if (hint) hint.textContent = `Filial atual: ${nomeAtual}`;
+    if (input) {
+      input.value = nomeAtual || '';
+      input.focus();
+      input.select();
+    }
+    if (box) {
+      box.hidden = false;
+      box.style.display = 'grid';
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  };
+
+  document.getElementById('filial-rename-cancel')?.addEventListener('click', closeRename);
+  document.getElementById('filial-rename-save')?.addEventListener('click', async () => {
+    const nome = String(input?.value || '').trim();
+    if (!renameId) return;
+    if (!nome) {
+      alert('Informe o novo nome');
+      return;
+    }
+    try {
+      await api(`/admin/bases/${renameId}`, {
+        method: 'PATCH',
+        body: { nome },
+        token: token(),
+      });
+      toast('Filial renomeada');
+      closeRename();
+      render();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  input?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('filial-rename-save')?.click();
+    }
+  });
+
   document.querySelectorAll('[data-rename]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const nome = prompt('Novo nome', btn.dataset.nome);
-      if (!nome) return;
-      try {
-        await api(`/admin/bases/${btn.dataset.rename}`, {
-          method: 'PATCH',
-          body: { nome },
-          token: token(),
-        });
-        render();
-      } catch (err) {
-        alert(err.message);
-      }
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openRename(btn.dataset.rename, btn.dataset.nome || '');
     });
   });
   document.querySelectorAll('[data-del]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       if (
-        !confirm(
+        !window.confirm(
           `Excluir a filial ${btn.dataset.codigo}? Isso remove usuários, equipamentos e histórico dela.`
         )
       ) {
